@@ -8,7 +8,7 @@ export type ContentCategory = "anime" | "movies" | "series" | "manga" | "books";
 export async function getDatabase(category: ContentCategory): Promise<Database> {
   // База должна лежать в GoldenMedia/backend/src/data/databases
   const backendSrcRoot = __dirname;
-  const dbDir = path.join(backendSrcRoot, "data", "databases");
+  const dbDir = path.join(backendSrcRoot, "..", "data", "databases");
 
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
