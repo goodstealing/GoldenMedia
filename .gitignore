@@ -1,0 +1,57 @@
+# Dependencies
+**/node_modules/
+**/.pnp
+**/.pnp.js
+
+# Build outputs
+**/dist/
+**/dist-ssr/
+**/build/
+
+# Tooling caches
+**/.vite/
+**/.cache/
+**/.turbo/
+**/.parcel-cache/
+
+# Logs
+**/logs/
+**/*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment files (keep examples)
+**/.env
+**/.env.*
+!**/.env.example
+
+# TypeScript
+**/*.tsbuildinfo
+
+# Tests / coverage
+**/coverage/
+**/.nyc_output/
+
+# Lint caches
+**/.eslintcache
+
+# Editor directories and files
+**/.vscode/*
+!**/.vscode/extensions.json
+**/.idea/
+
+# OS generated files
+**/.DS_Store
+**/Thumbs.db
+**/Desktop.ini
+
+# Windows / Visual Studio
+**/*.suo
+**/*.ntvs*
+**/*.njsproj
+**/*.sln
+**/*.sw?
+
