@@ -6,6 +6,40 @@ import { getDatabase, ContentCategory } from "../db/connection";
 
 const router = Router();
 
+type ShikimoriStatus =
+  | "completed"
+  | "watching"
+  | "planned"
+  | "dropped"
+  | "on_hold"
+  | string;
+
+type ShikimoriAnimeEntry = {
+  target_title: string;
+  target_title_ru: string;
+  target_type: string;
+  score: number;
+  status: ShikimoriStatus;
+  episodes: number;
+};
+
+function mapShikimoriStatus(status: ShikimoriStatus): string {
+  switch (status) {
+    case "completed":
+      return "Просмотрено";
+    case "watching":
+      return "Смотрю";
+    case "planned":
+      return "Запланировано";
+    case "dropped":
+      return "Брошено";
+    case "on_hold":
+      return "Отложено";
+    default:
+      return "Запланировано";
+  }
+}
+
 // Корень для обложек: GoldenMedia/backend/src/data/covers/:category
 const backendSrcRoot = __dirname;
 const coversRoot = path.join(backendSrcRoot, "data", "covers");
@@ -164,6 +198,88 @@ router.get("/:category", async (req, res) => {
   }
 });
 
+// Импорт аниме из JSON-экспорта Shikimori
+router.post("/import/shikimori/anime", async (req, res) => {
+  try {
+    const payload = req.body;
+
+    if (!Array.isArray(payload)) {
+      return res.status(400).json({ error: "Body must be an array" });
+    }
+
+    const entries = payload as ShikimoriAnimeEntry[];
+    const db = await getDatabase("anime");
+
+    let imported = 0;
+    let skipped = 0;
+
+    for (const entry of entries) {
+      if (!entry || entry.target_type !== "Anime") {
+        skipped += 1;
+        continue;
+      }
+
+      const ruTitle = (entry.target_title_ru || entry.target_title).trim();
+      const originalTitle = (entry.target_title || ruTitle).trim();
+
+      if (!ruTitle) {
+        skipped += 1;
+        continue;
+      }
+
+      const normalizedStatus = mapShikimoriStatus(entry.status);
+      const rating =
+        typeof entry.score === "number" && entry.score > 0
+          ? entry.score
+          : null;
+
+      const episodesField =
+        typeof entry.episodes === "number" && entry.episodes > 0
+          ? entry.episodes
+          : null;
+
+      const episodesWatched = episodesField;
+      const episodesTotal = episodesField;
+
+      const existing = await db.get(
+        "SELECT id FROM content WHERE title = ?",
+        ruTitle
+      );
+      if (existing) {
+        skipped += 1;
+        continue;
+      }
+
+      await db.run(
+        `INSERT INTO content 
+        (title, original_title, cover_path, status, rating, episodes_total, episodes_watched, season, genres, studio, release_date, duration_text)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          ruTitle,
+          originalTitle,
+          null,
+          normalizedStatus,
+          rating,
+          episodesTotal,
+          episodesWatched,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      );
+
+      imported += 1;
+    }
+
+    res.status(201).json({ imported, skipped, total: entries.length });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to import from Shikimori" });
+  }
+});
+
 // Добавить новый элемент (поддерживает JSON и multipart/form-data с файлом cover)
 router.post("/:category", upload.single("cover"), async (req, res) => {
   try {
@@ -181,7 +297,8 @@ router.post("/:category", upload.single("cover"), async (req, res) => {
       genres,
       studio,
       release_date,
-      duration_text
+      duration_text,
+      cover_path
     } = req.body as {
       title?: string;
       original_title?: string;
@@ -194,6 +311,7 @@ router.post("/:category", upload.single("cover"), async (req, res) => {
       studio?: string;
       release_date?: string;
       duration_text?: string;
+      cover_path?: string;
     };
 
     if (!title || typeof title !== "string" || !title.trim()) {
@@ -239,9 +357,12 @@ router.post("/:category", upload.single("cover"), async (req, res) => {
         : 0;
 
     const file = req.file as Express.Multer.File | undefined;
-    const coverPath = file
-      ? `/covers/${category}/${file.filename}`
-      : null;
+    const coverPath =
+      file != null
+        ? `/covers/${category}/${file.filename}`
+        : cover_path && typeof cover_path === "string" && cover_path.trim()
+        ? cover_path.trim()
+        : null;
 
     const result = await db.run(
       `INSERT INTO content 
@@ -295,13 +416,19 @@ router.put(
     }
 
     const file = req.file as Express.Multer.File | undefined;
+    const body = req.body as { cover_path?: string } & Record<string, unknown>;
+
+    const nextCoverPath =
+      file != null
+        ? `/covers/${category}/${file.filename}`
+        : typeof body.cover_path === "string" && body.cover_path.trim()
+        ? body.cover_path.trim()
+        : existing.cover_path;
 
     const updated = {
       ...existing,
-      ...req.body,
-      cover_path: file
-        ? `/covers/${category}/${file.filename}`
-        : existing.cover_path
+      ...body,
+      cover_path: nextCoverPath
     };
 
     await db.run(

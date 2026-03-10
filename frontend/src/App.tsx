@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 
 type Category = "anime" | "movies" | "series" | "manga" | "books";
@@ -117,6 +117,46 @@ function App() {
   const [formDurationTotal, setFormDurationTotal] = useState("");
   const [formDurationWatched, setFormDurationWatched] = useState("");
   const [formAnimeDurationText, setFormAnimeDurationText] = useState("");
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+  const [coverMode, setCoverMode] = useState<"file" | "url">("url");
+  const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
+
+  const handleShikimoriImport = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const res = await fetch(
+        `${API_BASE}/api/content/import/shikimori/anime`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(data)
+        }
+      );
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || "Не удалось импортировать данные");
+      }
+      const info = await res.json();
+      alert(
+        `Импорт завершён. Добавлено: ${info.imported}, пропущено: ${info.skipped}, всего: ${info.total}.`
+      );
+      setChangeToken((t) => t + 1);
+    } catch (err) {
+      alert(
+        `Ошибка импорта: ${(err as Error).message || "проверьте формат JSON"}`
+      );
+    } finally {
+      e.target.value = "";
+    }
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -182,6 +222,20 @@ function App() {
     );
   };
 
+  useEffect(() => {
+    if (!formCoverFile) {
+      setFilePreviewUrl(null);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(formCoverFile);
+    setFilePreviewUrl(objectUrl);
+
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [formCoverFile]);
+
   const handleSortClick = (column: SortBy) => {
     if (sortBy === column) {
       setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
@@ -208,6 +262,7 @@ function App() {
     setFormReleaseDate("");
     setFormCoverPath("");
     setFormCoverFile(null);
+    setCoverMode("url");
     setFormDurationTotal("");
     setFormDurationWatched("");
     setFormAnimeDurationText("");
@@ -233,6 +288,11 @@ function App() {
     setFormReleaseDate(item.release_date ?? "");
     setFormCoverPath(item.cover_path ?? "");
     setFormCoverFile(null);
+    const isUrlCover =
+      typeof item.cover_path === "string" &&
+      (item.cover_path.startsWith("http://") ||
+        item.cover_path.startsWith("https://"));
+    setCoverMode(isUrlCover ? "url" : "file");
     if (category === "movies") {
       setFormDurationTotal(
         item.episodes_total != null ? formatTime(item.episodes_total) : ""
@@ -256,6 +316,15 @@ function App() {
 
   const closeForm = () => {
     setFormOpen(false);
+  };
+
+  const switchCoverMode = (mode: "file" | "url") => {
+    setCoverMode(mode);
+    if (mode === "file") {
+      setFormCoverPath("");
+    } else {
+      setFormCoverFile(null);
+    }
   };
 
   const handleDelete = async (item: ContentItem) => {
@@ -324,7 +393,7 @@ function App() {
         ? (formAnimeDurationText.trim() || "23 мин.")
         : null;
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       title: formTitle.trim(),
       original_title: formOriginalTitle.trim() || null,
       status: formStatus || null,
@@ -337,6 +406,10 @@ function App() {
       release_date: formReleaseDate || null,
       duration_text: finalAnimeDurationText
     };
+
+    if (coverMode === "url" && formCoverPath.trim()) {
+      payload.cover_path = formCoverPath.trim();
+    }
 
     try {
       const urlBase = `${API_BASE}/api/content/${category}`;
@@ -416,8 +489,28 @@ function App() {
               type="button"
               onClick={() => setShowOriginalTitle((v) => !v)}
             >
-              {showOriginalTitle ? "Показывать русские названия" : "Показывать оригинальные названия"}
+              {showOriginalTitle
+                ? "Показывать русские названия"
+                : "Показывать оригинальные названия"}
             </button>
+            {category === "anime" && (
+              <>
+                <input
+                  type="file"
+                  accept="application/json"
+                  style={{ display: "none" }}
+                  ref={importInputRef}
+                  onChange={handleShikimoriImport}
+                />
+                <button
+                  className="secondary-btn"
+                  type="button"
+                  onClick={() => importInputRef.current?.click()}
+                >
+                  Импорт из Shikimori JSON
+                </button>
+              </>
+            )}
           </div>
 
           <div className="filters">
@@ -682,11 +775,21 @@ function App() {
             className="dialog"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="dialog-title">
-              {formMode === "create"
-                ? "Добавить запись"
-                : "Редактировать запись"}
-            </h2>
+            <div className="dialog-header">
+              <h2 className="dialog-title">
+                {formMode === "create"
+                  ? "Добавить запись"
+                  : "Редактировать запись"}
+              </h2>
+              <button
+                type="button"
+                className="dialog-close"
+                aria-label="Закрыть"
+                onClick={closeForm}
+              >
+                ×
+              </button>
+            </div>
             <form className="dialog-form" onSubmit={handleFormSubmit}>
               <div className="dialog-grid">
                 <label>
@@ -717,25 +820,113 @@ function App() {
                   />
                 </label>
 
-                <label>
-                  <span>Файл обложки</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) =>
-                      setFormCoverFile(
-                        e.target.files && e.target.files[0]
-                          ? e.target.files[0]
-                          : null
-                      )
-                    }
-                  />
-                  {formCoverPath && (
-                    <small>
-                      Текущая обложка: <code>{formCoverPath}</code>
-                    </small>
-                  )}
-                </label>
+                <div className="cover-block">
+                  <div className="cover-block-head">
+                    <div className="cover-block-title">Обложка</div>
+                    <div className="cover-mode">
+                      <button
+                        type="button"
+                        className={`chip ${coverMode === "file" ? "chip-active" : ""}`}
+                        onClick={() => switchCoverMode("file")}
+                      >
+                        Файл
+                      </button>
+                      <button
+                        type="button"
+                        className={`chip ${coverMode === "url" ? "chip-active" : ""}`}
+                        onClick={() => switchCoverMode("url")}
+                      >
+                        Ссылка
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="cover-block-grid">
+                    <label>
+                      <span>Файл обложки</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        disabled={coverMode !== "file"}
+                        onChange={(e) =>
+                          setFormCoverFile(
+                            e.target.files && e.target.files[0]
+                              ? e.target.files[0]
+                              : null
+                          )
+                        }
+                      />
+                      <small className="hint">
+                        {formCoverFile
+                          ? formCoverFile.name
+                          : coverMode === "file" && formCoverPath
+                          ? `Текущая обложка: ${formCoverPath}`
+                          : "Файл не выбран"}
+                      </small>
+                    </label>
+
+                    <label>
+                      <span>Ссылка на обложку (URL)</span>
+                      <input
+                        type="url"
+                        inputMode="url"
+                        placeholder="https://example.com/cover.webp"
+                        disabled={coverMode !== "url"}
+                        value={coverMode === "url" ? formCoverPath : ""}
+                        onChange={(e) => setFormCoverPath(e.target.value)}
+                      />
+                      <small className="hint">
+                        Поддерживаются любые форматы, которые умеет браузер (webp,
+                        png, jpeg/jpg и др.).
+                      </small>
+                    </label>
+
+                    <div className="cover-preview">
+                      <span>Предпросмотр</span>
+                      <div className="cover-preview-box">
+                        {(() => {
+                          let src: string | null = null;
+
+                          if (coverMode === "url") {
+                            const trimmed = formCoverPath.trim();
+                            src = trimmed ? buildCoverUrl(trimmed) ?? null : null;
+                          } else {
+                            if (filePreviewUrl) {
+                              src = filePreviewUrl;
+                            } else if (formCoverPath) {
+                              src = buildCoverUrl(formCoverPath) ?? null;
+                            }
+                          }
+
+                          if (src) {
+                            return (
+                              <img
+                                src={src}
+                                alt="cover preview"
+                                loading="lazy"
+                                onError={(e) => {
+                                  const target = e.currentTarget;
+                                  if (!target.dataset.broken) {
+                                    target.dataset.broken = "true";
+                                    target.src = "/covers/placeholder-cover.jpg";
+                                  }
+                                }}
+                              />
+                            );
+                          }
+
+                          return (
+                            <div className="cover-preview-placeholder">
+                              {coverMode === "file"
+                                ? formCoverFile?.name || "Выберите файл"
+                                : "Вставьте ссылку"}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
                 <label>
                   <span>Статус</span>

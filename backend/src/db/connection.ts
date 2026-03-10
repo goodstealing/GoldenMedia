@@ -46,18 +46,14 @@ async function ensureSchema(db: Database): Promise<void> {
       ON content(title);
   `);
 
-  const columns = await db.all<{ name: string }>(
+  const columns = await db.all<{ name: string }[]>(
     "PRAGMA table_info(content)"
   );
-  const hasOriginalTitle = columns.some(
-    (col) => col.name === "original_title"
-  );
+  const hasOriginalTitle = columns.some((col) => col.name === "original_title");
   if (!hasOriginalTitle) {
     await db.exec("ALTER TABLE content ADD COLUMN original_title TEXT;");
   }
-  const hasDurationText = columns.some(
-    (col) => col.name === "duration_text"
-  );
+  const hasDurationText = columns.some((col) => col.name === "duration_text");
   if (!hasDurationText) {
     await db.exec("ALTER TABLE content ADD COLUMN duration_text TEXT;");
   }
