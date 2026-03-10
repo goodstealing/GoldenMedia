@@ -103,7 +103,9 @@ router.get("/:category", async (req, res) => {
       season, // Зима/Весна/Лето/Осень или "Все"
       year, // год выхода
       sortBy,
-      sortDir
+      sortDir,
+      page,
+      pageSize
     } = req.query;
 
     const conditions: string[] = [];
@@ -187,11 +189,37 @@ router.get("/:category", async (req, res) => {
         orderBy = "";
     }
 
-    const rows = await db.all(
-      `SELECT * FROM content ${whereClause} ${orderBy}`,
+    // Пагинация: по умолчанию возвращаем все записи, но если переданы page/pageSize —
+    // отдаем объект с total и текущей страницей.
+    const pageNumber =
+      typeof page === "string" && Number(page) > 0 ? Number(page) : 1;
+    const pageSizeNumberRaw =
+      typeof pageSize === "string" && Number(pageSize) > 0
+        ? Number(pageSize)
+        : undefined;
+    const pageSizeNumber = pageSizeNumberRaw ?? 50;
+    const safePageSize = Math.min(Math.max(pageSizeNumber, 1), 500);
+
+    // Считаем общее количество для пагинации
+    const totalRow = await db.get<{ count: number }>(
+      `SELECT COUNT(*) as count FROM content ${whereClause}`,
       params
     );
-    res.json(rows);
+    const total = totalRow?.count ?? 0;
+
+    const offset = (pageNumber - 1) * safePageSize;
+
+    const rows = await db.all(
+      `SELECT * FROM content ${whereClause} ${orderBy} LIMIT ? OFFSET ?`,
+      [...params, safePageSize, offset]
+    );
+
+    res.json({
+      items: rows,
+      total,
+      page: pageNumber,
+      pageSize: safePageSize
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Failed to load content" });

@@ -33,6 +33,13 @@ export type ContentItem = {
   duration_text: string | null;
 };
 
+export type PaginatedContentResponse = {
+  items: ContentItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
 export const STATUSES: Status[] = [
   "Запланировано",
   "Смотрю",

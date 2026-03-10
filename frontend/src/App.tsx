@@ -5,6 +5,7 @@ import type {
   ContentItem,
   SortBy,
   Status,
+  PaginatedContentResponse,
 } from "./domain";
 import { getApiBase } from "./utils/api";
 import { formatTime, parseDurationToSeconds } from "./utils/time";
@@ -12,6 +13,7 @@ import { CategoryTabs } from "./components/MainWindow/CategoryTabs";
 import { Toolbar } from "./components/MainWindow/Toolbar";
 import { FiltersPanel } from "./components/MainWindow/FiltersPanel";
 import { ContentTable } from "./components/MainWindow/ContentTable";
+import { Pagination } from "./components/MainWindow/Pagination";
 import { ContentFormDialog } from "./components/MainWindow/ContentFormDialog";
 
 const API_BASE = getApiBase();
@@ -32,6 +34,19 @@ function App() {
 
   const [sortBy, setSortBy] = useState<SortBy>("");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem("goldenmedia_pageSize");
+      const n = stored ? Number(stored) : NaN;
+      if (n === 20 || n === 50 || n === 100) {
+        return n;
+      }
+    }
+    return 50;
+  });
+  const [totalItems, setTotalItems] = useState<number>(0);
 
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
@@ -123,14 +138,17 @@ function App() {
           params.set("sortBy", sortBy);
           params.set("sortDir", sortDir);
         }
+        params.set("page", String(page));
+        params.set("pageSize", String(pageSize));
 
         const url = `${API_BASE}/api/content/${category}?${params.toString()}`;
         const res = await fetch(url, { signal: controller.signal });
         if (!res.ok) {
           throw new Error(`Ошибка загрузки: ${res.status}`);
         }
-        const data: ContentItem[] = await res.json();
-        setItems(data);
+        const data: PaginatedContentResponse = await res.json();
+        setItems(data.items);
+        setTotalItems(data.total);
       } catch (e: unknown) {
         if ((e as any).name === "AbortError") return;
         setError((e as Error).message);
@@ -151,6 +169,8 @@ function App() {
     yearFilter,
     sortBy,
     sortDir,
+    page,
+    pageSize,
     changeToken
   ]);
 
@@ -184,6 +204,18 @@ function App() {
   };
 
   const visibleItems = useMemo(() => items, [items]);
+
+  const handlePageChange = (nextPage: number) => {
+    setPage(nextPage);
+  };
+
+  const handlePageSizeChange = (nextPageSize: number) => {
+    setPageSize(nextPageSize);
+    setPage(1);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("goldenmedia_pageSize", String(nextPageSize));
+    }
+  };
 
   const openCreateForm = () => {
     setFormMode("create");
@@ -409,6 +441,14 @@ function App() {
             showOriginalTitle={showOriginalTitle}
             onEdit={openEditForm}
             onDelete={handleDelete}
+          />
+
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={totalItems}
+            onPageChange={handlePageChange}
+            onPageSizeChange={handlePageSizeChange}
           />
         </section>
       </main>
