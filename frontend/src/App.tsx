@@ -1,82 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
+import type {
+  Category,
+  ContentItem,
+  SortBy,
+  Status,
+} from "./domain";
+import { getApiBase } from "./utils/api";
+import { formatTime, parseDurationToSeconds } from "./utils/time";
+import { CategoryTabs } from "./components/MainWindow/CategoryTabs";
+import { Toolbar } from "./components/MainWindow/Toolbar";
+import { FiltersPanel } from "./components/MainWindow/FiltersPanel";
+import { ContentTable } from "./components/MainWindow/ContentTable";
+import { ContentFormDialog } from "./components/MainWindow/ContentFormDialog";
 
-type Category = "anime" | "movies" | "series" | "manga" | "books";
-
-type Status =
-  | "Запланировано"
-  | "Смотрю"
-  | "Просмотрено"
-  | "Отложено"
-  | "Брошено"
-  | "Любимое";
-
-type ContentItem = {
-  id: number;
-  title: string;
-  original_title: string | null;
-  cover_path: string | null;
-  status: Status | null;
-  rating: number | null;
-  episodes_total: number | null;
-  episodes_watched: number | null;
-  season: string | null;
-  genres: string | null;
-  studio: string | null;
-  release_date: string | null;
-  duration_text: string | null;
-};
-
-const API_BASE = "http://localhost:4000";
-
-function buildCoverUrl(path: string | null): string | undefined {
-  if (!path) return undefined;
-  if (path.startsWith("http://") || path.startsWith("https://")) {
-    return path;
-  }
-  if (path.startsWith("/")) {
-    return `${API_BASE}${path}`;
-  }
-  return `${API_BASE}/${path}`;
-}
-
-const STATUSES: Status[] = [
-  "Запланировано",
-  "Смотрю",
-  "Просмотрено",
-  "Отложено",
-  "Брошено",
-  "Любимое"
-];
-
-const CATEGORIES: { id: Category; label: string }[] = [
-  { id: "series", label: "Сериалы" },
-  { id: "movies", label: "Фильмы" },
-  { id: "anime", label: "Аниме" },
-  { id: "manga", label: "Манга" },
-  { id: "books", label: "Книги" }
-];
-
-type SortBy = "title" | "rating" | "episodes" | "season" | "studio" | "progress" | "";
-
-function getStatusClassName(status: Status): string {
-  switch (status) {
-    case "Запланировано":
-      return "status-planned";
-    case "Смотрю":
-      return "status-watching";
-    case "Просмотрено":
-      return "status-completed";
-    case "Отложено":
-      return "status-on-hold";
-    case "Брошено":
-      return "status-dropped";
-    case "Любимое":
-      return "status-favorite";
-    default:
-      return "";
-  }
-}
+const API_BASE = getApiBase();
 
 function App() {
   const [category, setCategory] = useState<Category>("anime");
@@ -350,28 +288,6 @@ function App() {
       return;
     }
 
-    const parseDurationToSeconds = (value: string): number | null => {
-      const trimmed = value.trim();
-      if (!trimmed) return null;
-      const parts = trimmed.split(":").map((p) => p.trim());
-      if (parts.some((p) => p === "" || Number.isNaN(Number(p)))) {
-        return null;
-      }
-      let seconds = 0;
-      if (parts.length === 3) {
-        const [h, m, s] = parts.map((p) => Number(p));
-        seconds = h * 3600 + m * 60 + s;
-      } else if (parts.length === 2) {
-        const [m, s] = parts.map((p) => Number(p));
-        seconds = m * 60 + s;
-      } else if (parts.length === 1) {
-        seconds = Number(parts[0]);
-      } else {
-        return null;
-      }
-      return seconds >= 0 ? seconds : null;
-    };
-
     const isTimeCategory = category === "movies";
 
     const episodesTotalValue =
@@ -457,687 +373,86 @@ function App() {
 
       <main className="app-main">
         <section className="card">
-          <div className="tabs">
-            {CATEGORIES.map((c) => (
-              <button
-                key={c.id}
-                className={`tab category-tab category-${c.id} ${
-                  category === c.id ? "tab-active" : ""
-                }`}
-                onClick={() => setCategory(c.id)}
-              >
-                <span className="category-tab-content">
-                  <span className="category-tab-title">{c.label}</span>
-                  <span className="category-tab-subtitle">
-                    {c.id === "anime" && "Онгоинги и завершённые тайтлы"}
-                    {c.id === "movies" && "Полнометражные фильмы"}
-                    {c.id === "series" && "Сериалы и шоу"}
-                    {c.id === "manga" && "Манга и комиксы"}
-                    {c.id === "books" && "Книги и ранобэ"}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </div>
+          <CategoryTabs value={category} onChange={setCategory} />
 
-          <div className="toolbar">
-            <button className="primary-btn" onClick={openCreateForm}>
-              Добавить запись
-            </button>
-            <button
-              className="secondary-btn title-toggle"
-              type="button"
-              onClick={() => setShowOriginalTitle((v) => !v)}
-            >
-              {showOriginalTitle
-                ? "Показывать русские названия"
-                : "Показывать оригинальные названия"}
-            </button>
-            {category === "anime" && (
-              <>
-                <input
-                  type="file"
-                  accept="application/json"
-                  style={{ display: "none" }}
-                  ref={importInputRef}
-                  onChange={handleShikimoriImport}
-                />
-                <button
-                  className="secondary-btn"
-                  type="button"
-                  onClick={() => importInputRef.current?.click()}
-                >
-                  Импорт из Shikimori JSON
-                </button>
-              </>
-            )}
-          </div>
+          <Toolbar
+            category={category}
+            onCreate={openCreateForm}
+            showOriginalTitle={showOriginalTitle}
+            onToggleOriginalTitle={() => setShowOriginalTitle((v) => !v)}
+            importInputRef={importInputRef}
+            onShikimoriImport={handleShikimoriImport}
+          />
 
-          <div className="filters">
-            <div className="filters-row">
-              <div className="filter-group">
-                <label className="filter-label">Статусы</label>
-                <div className="statuses">
-                  <button
-                    type="button"
-                    className={`chip chip-all ${
-                      selectedStatuses.length === 0 ? "chip-active" : ""
-                    }`}
-                    onClick={() => setSelectedStatuses([])}
-                  >
-                    Все
-                  </button>
-                  {STATUSES.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      className={`chip ${
-                        selectedStatuses.includes(s)
-                          ? `chip-active ${getStatusClassName(s)}`
-                          : ""
-                      }`}
-                      onClick={() => toggleStatus(s)}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
+          <FiltersPanel
+            selectedStatuses={selectedStatuses}
+            onToggleStatus={toggleStatus}
+            onResetStatuses={() => setSelectedStatuses([])}
+            titleQuery={titleQuery}
+            onTitleQueryChange={setTitleQuery}
+            genresQuery={genresQuery}
+            onGenresQueryChange={setGenresQuery}
+            seasonFilter={seasonFilter}
+            onSeasonFilterChange={setSeasonFilter}
+            yearFilter={yearFilter}
+            onYearFilterChange={setYearFilter}
+          />
 
-            <div className="filters-row">
-              <div className="filter-group">
-                <label className="filter-label">Поиск по названию</label>
-                <input
-                  type="text"
-                  placeholder="Введите название..."
-                  value={titleQuery}
-                  onChange={(e) => setTitleQuery(e.target.value)}
-                />
-              </div>
-
-              <div className="filter-group">
-                <label className="filter-label">Поиск по жанрам</label>
-                <input
-                  type="text"
-                  placeholder="Комедия, драма..."
-                  value={genresQuery}
-                  onChange={(e) => setGenresQuery(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="filters-row">
-              <div className="filter-group">
-                <label className="filter-label">Сезон</label>
-                <select
-                  value={seasonFilter}
-                  onChange={(e) =>
-                    setSeasonFilter(
-                      e.target.value as
-                        | "Все"
-                        | "Зима"
-                        | "Весна"
-                        | "Лето"
-                        | "Осень"
-                    )
-                  }
-                >
-                  <option value="Все">Все</option>
-                  <option value="Зима">Зима</option>
-                  <option value="Весна">Весна</option>
-                  <option value="Лето">Лето</option>
-                  <option value="Осень">Осень</option>
-                </select>
-              </div>
-
-              <div className="filter-group">
-                <label className="filter-label">Год выхода</label>
-                <input
-                  type="number"
-                  placeholder="Напр. 2014"
-                  value={yearFilter}
-                  onChange={(e) => setYearFilter(e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="table-wrapper">
-            {loading && <div className="info">Загрузка...</div>}
-            {error && <div className="info error">Ошибка: {error}</div>}
-
-            {!loading && !error && (
-              <table className="content-table">
-                <thead>
-                  <tr>
-                    <th>Обложка</th>
-                    <th onClick={() => handleSortClick("title")}>
-                      Название{" "}
-                      {sortBy === "title" && (
-                        <span>{sortDir === "asc" ? "▲" : "▼"}</span>
-                      )}
-                    </th>
-                    <th>Статус</th>
-                    <th
-                      className="th-numeric"
-                      onClick={() => handleSortClick("rating")}
-                    >
-                      Оценка{" "}
-                      {sortBy === "rating" && (
-                        <span>{sortDir === "asc" ? "▲" : "▼"}</span>
-                      )}
-                    </th>
-                    <th onClick={() => handleSortClick("episodes")}>
-                      Эпизоды{" "}
-                      {sortBy === "episodes" && (
-                        <span>{sortDir === "asc" ? "▲" : "▼"}</span>
-                      )}
-                    </th>
-                    <th onClick={() => handleSortClick("season")}>
-                      Сезон / Год{" "}
-                      {sortBy === "season" && (
-                        <span>{sortDir === "asc" ? "▲" : "▼"}</span>
-                      )}
-                    </th>
-                    <th>Жанры</th>
-                    <th onClick={() => handleSortClick("studio")}>
-                      Студия{" "}
-                      {sortBy === "studio" && (
-                        <span>{sortDir === "asc" ? "▲" : "▼"}</span>
-                      )}
-                    </th>
-                    <th onClick={() => handleSortClick("progress")}>
-                      Прогресс{" "}
-                      {sortBy === "progress" && (
-                        <span>{sortDir === "asc" ? "▲" : "▼"}</span>
-                      )}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleItems.length === 0 && (
-                    <tr>
-                      <td colSpan={9} className="empty">
-                        Пока нет записей в этой категории.
-                      </td>
-                    </tr>
-                  )}
-                  {visibleItems.map((item) => (
-                    <tr key={item.id}>
-                      <td>
-                        <div className="cover-thumb">
-                          {item.cover_path ? (
-                            <img
-                              src={buildCoverUrl(item.cover_path)}
-                              alt={item.title}
-                              loading="lazy"
-                              onError={(e) => {
-                                const target = e.currentTarget;
-                                if (!target.dataset.broken) {
-                                  target.dataset.broken = "true";
-                                  target.src = "/covers/placeholder-cover.jpg";
-                                }
-                              }}
-                            />
-                          ) : (
-                            <span className="cover-thumb-text">
-                              Нет обложки
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td>
-                        <div className="title-cell-main">
-                          {showOriginalTitle && item.original_title
-                            ? item.original_title
-                            : item.title}
-                        </div>
-                        {item.original_title && (
-                          <div className="title-cell-alt">
-                            {showOriginalTitle ? item.title : item.original_title}
-                          </div>
-                        )}
-                      </td>
-                      <td>
-                        <span
-                          className={`status-badge ${getStatusClassName(
-                            (item.status as Status) ?? "Запланировано"
-                          )}`}
-                        >
-                          {item.status ?? "Запланировано"}
-                        </span>
-                      </td>
-                      <td className="td-numeric">
-                        {item.rating != null ? item.rating : "n/a"}
-                      </td>
-                      <td>
-                        {category === "anime" ? (
-                          <>
-                            <div>
-                              {item.episodes_watched != null &&
-                              item.episodes_total != null &&
-                              item.episodes_total !== 0
-                                ? `${item.episodes_watched} из ${item.episodes_total}`
-                                : "—"}
-                            </div>
-                            {item.duration_text && (
-                              <div className="duration-text">
-                                {item.duration_text}
-                              </div>
-                            )}
-                          </>
-                        ) : (
-                          renderEpisodesOrDuration(
-                            item.episodes_watched,
-                            item.episodes_total,
-                            category
-                          )
-                        )}
-                      </td>
-                      <td>{item.season ?? item.release_date ?? "—"}</td>
-                      <td>{item.genres ?? "—"}</td>
-                      <td>{item.studio ?? "—"}</td>
-                      <td>
-                        <ProgressBar
-                          watched={item.episodes_watched}
-                          total={item.episodes_total}
-                        />
-                        <div className="row-actions">
-                          <button
-                            type="button"
-                            className="row-btn"
-                            onClick={() => openEditForm(item)}
-                          >
-                            Редактировать
-                          </button>
-                          <button
-                            type="button"
-                            className="row-btn row-btn-danger"
-                            onClick={() => handleDelete(item)}
-                          >
-                            Удалить
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          <ContentTable
+            category={category}
+            items={visibleItems}
+            loading={loading}
+            error={error}
+            sortBy={sortBy}
+            sortDir={sortDir}
+            onSortChange={handleSortClick}
+            showOriginalTitle={showOriginalTitle}
+            onEdit={openEditForm}
+            onDelete={handleDelete}
+          />
         </section>
       </main>
 
-      {formOpen && (
-        <div className="dialog-backdrop" onClick={closeForm}>
-          <div
-            className="dialog"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="dialog-header">
-              <h2 className="dialog-title">
-                {formMode === "create"
-                  ? "Добавить запись"
-                  : "Редактировать запись"}
-              </h2>
-              <button
-                type="button"
-                className="dialog-close"
-                aria-label="Закрыть"
-                onClick={closeForm}
-              >
-                ×
-              </button>
-            </div>
-            <form className="dialog-form" onSubmit={handleFormSubmit}>
-              <div className="dialog-grid">
-                <label>
-                  <span>Название *</span>
-                  <input
-                    type="text"
-                    value={formTitle}
-                    onChange={(e) => setFormTitle(e.target.value)}
-                    required
-                  />
-                </label>
-
-                <label>
-                  <span>
-                    Оригинальное название{" "}
-                    {category === "anime"
-                      ? "(японское)"
-                      : category === "movies" || category === "series"
-                      ? "(английское)"
-                      : ""}
-                  </span>
-                  <input
-                    type="text"
-                    value={formOriginalTitle}
-                    onChange={(e) =>
-                      setFormOriginalTitle(e.target.value)
-                    }
-                  />
-                </label>
-
-                <div className="cover-block">
-                  <div className="cover-block-head">
-                    <div className="cover-block-title">Обложка</div>
-                    <div className="cover-mode">
-                      <button
-                        type="button"
-                        className={`chip ${coverMode === "file" ? "chip-active" : ""}`}
-                        onClick={() => switchCoverMode("file")}
-                      >
-                        Файл
-                      </button>
-                      <button
-                        type="button"
-                        className={`chip ${coverMode === "url" ? "chip-active" : ""}`}
-                        onClick={() => switchCoverMode("url")}
-                      >
-                        Ссылка
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="cover-block-grid">
-                    <label>
-                      <span>Файл обложки</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        disabled={coverMode !== "file"}
-                        onChange={(e) =>
-                          setFormCoverFile(
-                            e.target.files && e.target.files[0]
-                              ? e.target.files[0]
-                              : null
-                          )
-                        }
-                      />
-                      <small className="hint">
-                        {formCoverFile
-                          ? formCoverFile.name
-                          : coverMode === "file" && formCoverPath
-                          ? `Текущая обложка: ${formCoverPath}`
-                          : "Файл не выбран"}
-                      </small>
-                    </label>
-
-                    <label>
-                      <span>Ссылка на обложку (URL)</span>
-                      <input
-                        type="url"
-                        inputMode="url"
-                        placeholder="https://example.com/cover.webp"
-                        disabled={coverMode !== "url"}
-                        value={coverMode === "url" ? formCoverPath : ""}
-                        onChange={(e) => setFormCoverPath(e.target.value)}
-                      />
-                      <small className="hint">
-                        Поддерживаются любые форматы, которые умеет браузер (webp,
-                        png, jpeg/jpg и др.).
-                      </small>
-                    </label>
-
-                    <div className="cover-preview">
-                      <span>Предпросмотр</span>
-                      <div className="cover-preview-box">
-                        {(() => {
-                          let src: string | null = null;
-
-                          if (coverMode === "url") {
-                            const trimmed = formCoverPath.trim();
-                            src = trimmed ? buildCoverUrl(trimmed) ?? null : null;
-                          } else {
-                            if (filePreviewUrl) {
-                              src = filePreviewUrl;
-                            } else if (formCoverPath) {
-                              src = buildCoverUrl(formCoverPath) ?? null;
-                            }
-                          }
-
-                          if (src) {
-                            return (
-                              <img
-                                src={src}
-                                alt="cover preview"
-                                loading="lazy"
-                                onError={(e) => {
-                                  const target = e.currentTarget;
-                                  if (!target.dataset.broken) {
-                                    target.dataset.broken = "true";
-                                    target.src = "/covers/placeholder-cover.jpg";
-                                  }
-                                }}
-                              />
-                            );
-                          }
-
-                          return (
-                            <div className="cover-preview-placeholder">
-                              {coverMode === "file"
-                                ? formCoverFile?.name || "Выберите файл"
-                                : "Вставьте ссылку"}
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <label>
-                  <span>Статус</span>
-                  <select
-                    value={formStatus}
-                    onChange={(e) =>
-                      setFormStatus(e.target.value as Status | "")
-                    }
-                  >
-                    <option value="">—</option>
-                    {STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label>
-                  <span>Оценка (1–10)</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={formRating}
-                    onChange={(e) => setFormRating(e.target.value)}
-                  />
-                </label>
-
-                {category === "movies" ? (
-                  <>
-                    <label>
-                      <span>
-                        Длительность&nbsp;
-                        {category === "movies"
-                          ? "(чч:мм:сс)"
-                          : "(общее время, чч:мм:сс)"}
-                      </span>
-                      <input
-                        type="text"
-                        placeholder="1:42:54"
-                        value={formDurationTotal}
-                        onChange={(e) =>
-                          setFormDurationTotal(e.target.value)
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span>Просмотрено (чч:мм:сс)</span>
-                      <input
-                        type="text"
-                        placeholder="0:33:12"
-                        value={formDurationWatched}
-                        onChange={(e) =>
-                          setFormDurationWatched(e.target.value)
-                        }
-                      />
-                    </label>
-                  </>
-                ) : (
-                  <>
-                    <label>
-                      <span>Всего эпизодов/страниц</span>
-                      <input
-                        type="number"
-                        min={0}
-                        value={formEpisodesTotal}
-                        onChange={(e) =>
-                          setFormEpisodesTotal(e.target.value)
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span>Просмотрено эпизодов/страниц</span>
-                      <input
-                        type="number"
-                        min={0}
-                        value={formEpisodesWatched}
-                        onChange={(e) =>
-                          setFormEpisodesWatched(e.target.value)
-                        }
-                      />
-                    </label>
-                    {category === "anime" && (
-                      <label>
-                        <span>Продолжительность</span>
-                        <input
-                          type="text"
-                          placeholder="23 мин."
-                          value={formAnimeDurationText}
-                          onChange={(e) =>
-                            setFormAnimeDurationText(e.target.value)
-                          }
-                        />
-                      </label>
-                    )}
-                  </>
-                )}
-
-                <label>
-                  <span>Сезон / год</span>
-                  <input
-                    type="text"
-                    placeholder={
-                      category === "movies" ? "2014" : "Лето 2014"
-                    }
-                    value={formSeason}
-                    onChange={(e) => setFormSeason(e.target.value)}
-                  />
-                </label>
-
-                <label>
-                  <span>Жанры (через запятую)</span>
-                  <input
-                    type="text"
-                    value={formGenres}
-                    onChange={(e) => setFormGenres(e.target.value)}
-                  />
-                </label>
-
-                <label>
-                  <span>Студия</span>
-                  <input
-                    type="text"
-                    value={formStudio}
-                    onChange={(e) => setFormStudio(e.target.value)}
-                  />
-                </label>
-
-                <label>
-                  <span>Дата выхода (опц.)</span>
-                  <input
-                    type="text"
-                    placeholder="YYYY-MM-DD"
-                    value={formReleaseDate}
-                    onChange={(e) =>
-                      setFormReleaseDate(e.target.value)
-                    }
-                  />
-                </label>
-
-              </div>
-
-              <div className="dialog-actions">
-                <button
-                  type="button"
-                  className="secondary-btn"
-                  onClick={closeForm}
-                >
-                  Отмена
-                </button>
-                <button type="submit" className="primary-btn">
-                  Сохранить
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function renderEpisodesOrDuration(
-  watched: number | null,
-  total: number | null,
-  category: Category
-) {
-  if (watched == null || total == null || total === 0) {
-    return "—";
-  }
-
-  if (category === "movies" || category === "anime") {
-    return `${formatTime(watched)} из ${formatTime(total)}`;
-  }
-
-  return `${watched} из ${total}`;
-}
-
-function formatTime(totalSeconds: number) {
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  const parts = [
-    h.toString(),
-    m.toString().padStart(2, "0"),
-    s.toString().padStart(2, "0")
-  ];
-  return parts.join(":");
-}
-
-type ProgressBarProps = {
-  watched: number | null;
-  total: number | null;
-};
-
-function ProgressBar({ watched, total }: ProgressBarProps) {
-  const percent =
-    watched != null && total && total > 0
-      ? Math.min(100, Math.round((watched / total) * 100))
-      : 0;
-
-  return (
-    <div className="progress">
-      <div className="progress-track">
-        <div
-          className="progress-fill"
-          style={{ width: `${percent}%` }}
-        />
-      </div>
-      <span className="progress-label">{percent}%</span>
+      <ContentFormDialog
+        category={category}
+        mode={formMode}
+        open={formOpen}
+        onClose={closeForm}
+        formTitle={formTitle}
+        onFormTitleChange={setFormTitle}
+        formOriginalTitle={formOriginalTitle}
+        onFormOriginalTitleChange={setFormOriginalTitle}
+        formStatus={formStatus}
+        onFormStatusChange={(value) => setFormStatus(value)}
+        formRating={formRating}
+        onFormRatingChange={setFormRating}
+        formEpisodesTotal={formEpisodesTotal}
+        onFormEpisodesTotalChange={setFormEpisodesTotal}
+        formEpisodesWatched={formEpisodesWatched}
+        onFormEpisodesWatchedChange={setFormEpisodesWatched}
+        formSeason={formSeason}
+        onFormSeasonChange={setFormSeason}
+        formGenres={formGenres}
+        onFormGenresChange={setFormGenres}
+        formStudio={formStudio}
+        onFormStudioChange={setFormStudio}
+        formReleaseDate={formReleaseDate}
+        onFormReleaseDateChange={setFormReleaseDate}
+        coverMode={coverMode}
+        onCoverModeChange={switchCoverMode}
+        formCoverPath={formCoverPath}
+        onFormCoverPathChange={setFormCoverPath}
+        formCoverFileName={formCoverFile ? formCoverFile.name : null}
+        filePreviewUrl={filePreviewUrl}
+        onCoverFileChange={setFormCoverFile}
+        formDurationTotal={formDurationTotal}
+        onFormDurationTotalChange={setFormDurationTotal}
+        formDurationWatched={formDurationWatched}
+        onFormDurationWatchedChange={setFormDurationWatched}
+        formAnimeDurationText={formAnimeDurationText}
+        onFormAnimeDurationTextChange={setFormAnimeDurationText}
+        onSubmit={handleFormSubmit}
+      />
     </div>
   );
 }
