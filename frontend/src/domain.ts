@@ -31,6 +31,8 @@ export type ContentItem = {
   studio: string | null;
   release_date: string | null;
   duration_text: string | null;
+  view_start_date: string | null;
+  view_end_date: string | null;
 };
 
 export type PaginatedContentResponse = {

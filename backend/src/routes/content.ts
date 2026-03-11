@@ -102,6 +102,7 @@ router.get("/:category", async (req, res) => {
       genres, // жанры через запятую
       season, // Зима/Весна/Лето/Осень или "Все"
       year, // год выхода
+      studio, // поиск по студии / режиссёру
       sortBy,
       sortDir,
       page,
@@ -125,10 +126,8 @@ router.get("/:category", async (req, res) => {
     }
 
     if (title) {
-      conditions.push(
-        "(LOWER(title) LIKE ? OR LOWER(IFNULL(original_title, '')) LIKE ?)"
-      );
-      const t = `%${String(title).toLowerCase()}%`;
+      conditions.push("(title LIKE ? OR IFNULL(original_title, '') LIKE ?)");
+      const t = `%${String(title)}%`;
       params.push(t, t);
     }
 
@@ -151,6 +150,11 @@ router.get("/:category", async (req, res) => {
     if (year) {
       conditions.push("substr(release_date, 1, 4) = ?");
       params.push(String(year));
+    }
+
+    if (studio) {
+      conditions.push("studio LIKE ?");
+      params.push(`%${String(studio)}%`);
     }
 
     const whereClause =
@@ -326,7 +330,9 @@ router.post("/:category", upload.single("cover"), async (req, res) => {
       studio,
       release_date,
       duration_text,
-      cover_path
+      cover_path,
+      view_start_date,
+      view_end_date
     } = req.body as {
       title?: string;
       original_title?: string;
@@ -340,6 +346,8 @@ router.post("/:category", upload.single("cover"), async (req, res) => {
       release_date?: string;
       duration_text?: string;
       cover_path?: string;
+      view_start_date?: string;
+      view_end_date?: string;
     };
 
     if (!title || typeof title !== "string" || !title.trim()) {
@@ -360,15 +368,17 @@ router.post("/:category", upload.single("cover"), async (req, res) => {
 
     const finalStatus =
       typeof status === "string" && status.trim()
-        ? status
+        ? status.trim()
         : "Запланировано";
 
-    const finalRating =
-      typeof rating === "number"
-        ? rating
-        : rating
-        ? Number(rating)
-        : null;
+    let finalRating: number | null;
+    if (typeof rating === "number") {
+      finalRating = rating;
+    } else if (typeof rating === "string" && rating.trim() !== "") {
+      finalRating = Number(rating);
+    } else {
+      finalRating = null;
+    }
 
     const finalEpisodesTotal =
       typeof episodes_total === "number"
@@ -392,10 +402,33 @@ router.post("/:category", upload.single("cover"), async (req, res) => {
         ? cover_path.trim()
         : null;
 
+    const nowIso = new Date().toISOString().slice(0, 10);
+
+    let finalViewStart: string | null =
+      typeof view_start_date === "string" && view_start_date.trim()
+        ? view_start_date.trim()
+        : null;
+    let finalViewEnd: string | null =
+      typeof view_end_date === "string" && view_end_date.trim()
+        ? view_end_date.trim()
+        : null;
+
+    if (finalStatus === "Смотрю" && !finalViewStart) {
+      finalViewStart = nowIso;
+    }
+    if (finalStatus === "Просмотрено") {
+      if (!finalViewStart) {
+        finalViewStart = nowIso;
+      }
+      if (!finalViewEnd) {
+        finalViewEnd = nowIso;
+      }
+    }
+
     const result = await db.run(
       `INSERT INTO content 
-      (title, original_title, cover_path, status, rating, episodes_total, episodes_watched, season, genres, studio, release_date, duration_text)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (title, original_title, cover_path, status, rating, episodes_total, episodes_watched, season, genres, studio, release_date, duration_text, view_start_date, view_end_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         normalizedTitle,
         original_title ?? null,
@@ -408,7 +441,9 @@ router.post("/:category", upload.single("cover"), async (req, res) => {
         genres ?? null,
         studio ?? null,
         release_date ?? null,
-        duration_text ?? null
+        duration_text ?? null,
+        finalViewStart,
+        finalViewEnd
       ]
     );
 
@@ -434,17 +469,19 @@ router.put(
     const id = Number(req.params.id);
     const db = await getDatabase(category);
 
-    const existing = await db.get(
-      "SELECT * FROM content WHERE id = ?",
-      id
-    );
+    const existing = await db.get("SELECT * FROM content WHERE id = ?", id);
 
     if (!existing) {
       return res.status(404).json({ error: "Not found" });
     }
 
     const file = req.file as Express.Multer.File | undefined;
-    const body = req.body as { cover_path?: string } & Record<string, unknown>;
+    const body = req.body as {
+      cover_path?: string;
+      status?: string;
+      view_start_date?: string;
+      view_end_date?: string;
+    } & Record<string, unknown>;
 
     const nextCoverPath =
       file != null
@@ -459,6 +496,39 @@ router.put(
       cover_path: nextCoverPath
     };
 
+    const prevStatus: string | null =
+      typeof existing.status === "string" ? existing.status : null;
+    const nextStatusRaw =
+      typeof body.status === "string" && body.status.trim()
+        ? body.status.trim()
+        : prevStatus;
+
+    const nextStatus = nextStatusRaw ?? null;
+
+    const nowIso = new Date().toISOString().slice(0, 10);
+
+    let nextViewStart: string | null =
+      typeof body.view_start_date === "string" && body.view_start_date.trim()
+        ? body.view_start_date.trim()
+        : (existing.view_start_date as string | null) ?? null;
+    let nextViewEnd: string | null =
+      typeof body.view_end_date === "string" && body.view_end_date.trim()
+        ? body.view_end_date.trim()
+        : (existing.view_end_date as string | null) ?? null;
+
+    if (prevStatus !== "Смотрю" && nextStatus === "Смотрю" && !nextViewStart) {
+      nextViewStart = nowIso;
+    }
+
+    if (prevStatus !== "Просмотрено" && nextStatus === "Просмотрено") {
+      if (!nextViewStart) {
+        nextViewStart = nowIso;
+      }
+      if (!nextViewEnd) {
+        nextViewEnd = nowIso;
+      }
+    }
+
     await db.run(
       `UPDATE content SET 
         title = ?, 
@@ -472,13 +542,15 @@ router.put(
         genres = ?, 
         studio = ?, 
         release_date = ?,
-        duration_text = ?
+        duration_text = ?,
+        view_start_date = ?,
+        view_end_date = ?
       WHERE id = ?`,
       [
         updated.title,
         updated.original_title,
         updated.cover_path,
-        updated.status,
+        nextStatus,
         updated.rating,
         updated.episodes_total,
         updated.episodes_watched,
@@ -487,6 +559,8 @@ router.put(
         updated.studio,
         updated.release_date,
         updated.duration_text,
+        nextViewStart,
+        nextViewEnd,
         id
       ]
     );

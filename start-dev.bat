@@ -12,5 +12,5 @@ start "GoldenMedia Frontend" cmd /k "cd /d frontend && npm run dev"
 
 echo Запущены backend и frontend в отдельных окнах.
 echo Можно закрыть это окно.
-pause >nul
+exit
 

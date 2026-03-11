@@ -1,8 +1,9 @@
-import type { Status } from "../../domain";
+import type { Category, Status } from "../../domain";
 
 type SeasonFilter = "Все" | "Зима" | "Весна" | "Лето" | "Осень";
 
 type FiltersPanelProps = {
+  category: Category;
   selectedStatuses: Status[];
   onToggleStatus: (status: Status) => void;
   onResetStatuses: () => void;
@@ -14,9 +15,12 @@ type FiltersPanelProps = {
   onSeasonFilterChange: (value: SeasonFilter) => void;
   yearFilter: string;
   onYearFilterChange: (value: string) => void;
+  directorQuery: string;
+  onDirectorQueryChange: (value: string) => void;
 };
 
 export function FiltersPanel({
+  category,
   selectedStatuses,
   onToggleStatus,
   onResetStatuses,
@@ -28,6 +32,8 @@ export function FiltersPanel({
   onSeasonFilterChange,
   yearFilter,
   onYearFilterChange,
+  directorQuery,
+  onDirectorQueryChange,
 }: FiltersPanelProps) {
   return (
     <div className="filters">
@@ -64,10 +70,12 @@ export function FiltersPanel({
 
       <div className="filters-row">
         <div className="filter-group">
-          <label className="filter-label">Поиск по названию</label>
+          <label className="filter-label">
+            Поиск по названию (рус / оригинальное)
+          </label>
           <input
             type="text"
-            placeholder="Введите название..."
+            placeholder="Русское или оригинальное название..."
             value={titleQuery}
             onChange={(e) => onTitleQueryChange(e.target.value)}
           />
@@ -85,33 +93,57 @@ export function FiltersPanel({
       </div>
 
       <div className="filters-row">
-        <div className="filter-group">
-          <label className="filter-label">Сезон</label>
-          <select
-            value={seasonFilter}
-            onChange={(e) =>
-              onSeasonFilterChange(
-                e.target.value as SeasonFilter,
-              )
-            }
-          >
-            <option value="Все">Все</option>
-            <option value="Зима">Зима</option>
-            <option value="Весна">Весна</option>
-            <option value="Лето">Лето</option>
-            <option value="Осень">Осень</option>
-          </select>
-        </div>
+        {category === "movies" ? (
+          <>
+            <div className="filter-group">
+              <label className="filter-label">Поиск по режиссёрам</label>
+              <input
+                type="text"
+                placeholder="Напр. Кристофер Нолан"
+                value={directorQuery}
+                onChange={(e) => onDirectorQueryChange(e.target.value)}
+              />
+            </div>
 
-        <div className="filter-group">
-          <label className="filter-label">Год выхода</label>
-          <input
-            type="number"
-            placeholder="Напр. 2014"
-            value={yearFilter}
-            onChange={(e) => onYearFilterChange(e.target.value)}
-          />
-        </div>
+            <div className="filter-group">
+              <label className="filter-label">Год выхода</label>
+              <input
+                type="number"
+                placeholder="Напр. 2014"
+                value={yearFilter}
+                onChange={(e) => onYearFilterChange(e.target.value)}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="filter-group">
+              <label className="filter-label">Сезон</label>
+              <select
+                value={seasonFilter}
+                onChange={(e) =>
+                  onSeasonFilterChange(e.target.value as SeasonFilter)
+                }
+              >
+                <option value="Все">Все</option>
+                <option value="Зима">Зима</option>
+                <option value="Весна">Весна</option>
+                <option value="Лето">Лето</option>
+                <option value="Осень">Осень</option>
+              </select>
+            </div>
+
+            <div className="filter-group">
+              <label className="filter-label">Год выхода</label>
+              <input
+                type="number"
+                placeholder="Напр. 2014"
+                value={yearFilter}
+                onChange={(e) => onYearFilterChange(e.target.value)}
+              />
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

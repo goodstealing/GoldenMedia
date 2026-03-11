@@ -3,6 +3,11 @@ import { getStatusClassName } from "../../domain";
 import { buildCoverUrl } from "../../utils/api";
 import ProgressBar from "../UI/ProgressBar";
 import { renderEpisodesOrDuration } from "./renderEpisodesOrDuration";
+import {
+  formatDateShort,
+  formatHoursMinutes,
+  formatViewPeriodInline,
+} from "../../utils/time";
 
 type SortBy = "title" | "rating" | "episodes" | "season" | "studio" | "progress" | "";
 
@@ -51,16 +56,16 @@ export function ContentTable({
                 {sortBy === "rating" && <span>{sortDir === "asc" ? "▲" : "▼"}</span>}
               </th>
               <th onClick={() => onSortChange("episodes")}>
-                Эпизоды{" "}
+                {category === "movies" ? "Продолжительность" : "Эпизоды"}{" "}
                 {sortBy === "episodes" && <span>{sortDir === "asc" ? "▲" : "▼"}</span>}
               </th>
               <th onClick={() => onSortChange("season")}>
-                Сезон / Год{" "}
+                {category === "movies" ? "Год выхода" : "Сезон / Год"}{" "}
                 {sortBy === "season" && <span>{sortDir === "asc" ? "▲" : "▼"}</span>}
               </th>
               <th>Жанры</th>
               <th onClick={() => onSortChange("studio")}>
-                Студия{" "}
+                {category === "movies" ? "Режиссёр" : "Студия"}{" "}
                 {sortBy === "studio" && <span>{sortDir === "asc" ? "▲" : "▼"}</span>}
               </th>
               <th onClick={() => onSortChange("progress")}>
@@ -100,16 +105,33 @@ export function ContentTable({
                   </div>
                 </td>
                 <td>
-                  <div className="title-cell-main">
-                    {showOriginalTitle && item.original_title
-                      ? item.original_title
-                      : item.title}
-                  </div>
-                  {item.original_title && (
-                    <div className="title-cell-alt">
-                      {showOriginalTitle ? item.title : item.original_title}
-                    </div>
-                  )}
+                  {(() => {
+                    const hasOriginal = Boolean(item.original_title);
+
+                    const primaryTitle =
+                      showOriginalTitle && hasOriginal
+                        ? (item.original_title as string)
+                        : item.title;
+
+                    let secondaryTitle: string | null = null;
+
+                    if (hasOriginal) {
+                      if (showOriginalTitle) {
+                        secondaryTitle = item.title;
+                      } else if (item.original_title !== item.title) {
+                        secondaryTitle = item.original_title as string;
+                      }
+                    }
+
+                    return (
+                      <>
+                        <div className="title-cell-main">{primaryTitle}</div>
+                        {secondaryTitle && (
+                          <div className="title-cell-alt">{secondaryTitle}</div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </td>
                 <td>
                   <span
@@ -137,6 +159,36 @@ export function ContentTable({
                         <div className="duration-text">{item.duration_text}</div>
                       )}
                     </>
+                  ) : category === "movies" ? (
+                    <div className="duration-cell">
+                      <span>
+                        {item.status === "Просмотрено" &&
+                        item.episodes_total != null &&
+                        item.episodes_total > 0
+                          ? formatHoursMinutes(item.episodes_total)
+                          : renderEpisodesOrDuration(
+                              item.episodes_watched,
+                              item.episodes_total,
+                              category,
+                            )}
+                      </span>
+                      {(() => {
+                        const inline = formatViewPeriodInline(
+                          item.view_start_date,
+                          item.view_end_date,
+                        );
+                        if (!inline) return null;
+                        return (
+                          <div className="duration-tooltip">
+                            <div className="duration-tooltip-line">
+                              <span className="duration-tooltip-value">
+                                {inline}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
                   ) : (
                     renderEpisodesOrDuration(
                       item.episodes_watched,
@@ -145,12 +197,20 @@ export function ContentTable({
                     )
                   )}
                 </td>
-                <td>{item.season ?? item.release_date ?? "—"}</td>
+                <td>
+                  {category === "movies"
+                    ? formatDateShort(item.release_date) ?? "—"
+                    : item.season ?? "—"}
+                </td>
                 <td>{item.genres ?? "—"}</td>
                 <td>{item.studio ?? "—"}</td>
                 <td>
                   <ProgressBar
-                    watched={item.episodes_watched}
+                    watched={
+                      category === "movies" && item.status === "Просмотрено"
+                        ? item.episodes_total
+                        : item.episodes_watched
+                    }
                     total={item.episodes_total}
                   />
                   <div className="row-actions">

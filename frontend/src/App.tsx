@@ -8,13 +8,19 @@ import type {
   PaginatedContentResponse,
 } from "./domain";
 import { getApiBase } from "./utils/api";
-import { formatTime, parseDurationToSeconds } from "./utils/time";
+import {
+  formatDateShort,
+  formatTime,
+  parseDateShortToIso,
+  parseDurationToSeconds,
+} from "./utils/time";
 import { CategoryTabs } from "./components/MainWindow/CategoryTabs";
 import { Toolbar } from "./components/MainWindow/Toolbar";
 import { FiltersPanel } from "./components/MainWindow/FiltersPanel";
 import { ContentTable } from "./components/MainWindow/ContentTable";
 import { Pagination } from "./components/MainWindow/Pagination";
 import { ContentFormDialog } from "./components/MainWindow/ContentFormDialog";
+import { InterfaceSettingsDialog } from "./components/Settings/InterfaceSettingsDialog";
 
 const API_BASE = getApiBase();
 
@@ -31,6 +37,7 @@ function App() {
     "Все" | "Зима" | "Весна" | "Лето" | "Осень"
   >("Все");
   const [yearFilter, setYearFilter] = useState("");
+  const [directorQuery, setDirectorQuery] = useState("");
 
   const [sortBy, setSortBy] = useState<SortBy>("");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -62,10 +69,19 @@ function App() {
   const [formGenres, setFormGenres] = useState("");
   const [formStudio, setFormStudio] = useState("");
   const [formReleaseDate, setFormReleaseDate] = useState("");
+  const [formViewStartDate, setFormViewStartDate] = useState("");
+  const [formViewEndDate, setFormViewEndDate] = useState("");
   const [formCoverPath, setFormCoverPath] = useState("");
 
   const [changeToken, setChangeToken] = useState(0);
-  const [showOriginalTitle, setShowOriginalTitle] = useState(false);
+  const [showOriginalTitle, setShowOriginalTitle] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem("goldenmedia_showOriginalTitle");
+      if (stored === "true") return true;
+      if (stored === "false") return false;
+    }
+    return false;
+  });
   const [formCoverFile, setFormCoverFile] = useState<File | null>(null);
   const [formDurationTotal, setFormDurationTotal] = useState("");
   const [formDurationWatched, setFormDurationWatched] = useState("");
@@ -73,6 +89,17 @@ function App() {
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const [coverMode, setCoverMode] = useState<"file" | "url">("url");
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
+
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [coverSize, setCoverSize] = useState<"small" | "medium" | "large">(() => {
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem("goldenmedia_coverSize");
+      if (stored === "small" || stored === "medium" || stored === "large") {
+        return stored;
+      }
+    }
+    return "small";
+  });
 
   const handleShikimoriImport = async (
     e: React.ChangeEvent<HTMLInputElement>
@@ -128,11 +155,14 @@ function App() {
         if (genresQuery.trim()) {
           params.set("genres", genresQuery.trim());
         }
-        if (seasonFilter !== "Все") {
+        if (category !== "movies" && seasonFilter !== "Все") {
           params.set("season", seasonFilter);
         }
         if (yearFilter.trim()) {
           params.set("year", yearFilter.trim());
+        }
+        if (directorQuery.trim()) {
+          params.set("studio", directorQuery.trim());
         }
         if (sortBy) {
           params.set("sortBy", sortBy);
@@ -167,6 +197,7 @@ function App() {
     genresQuery,
     seasonFilter,
     yearFilter,
+    directorQuery,
     sortBy,
     sortDir,
     page,
@@ -217,6 +248,21 @@ function App() {
     }
   };
 
+  const handleCoverSizeChange = (size: "small" | "medium" | "large") => {
+    setCoverSize(size);
+  };
+
+  const handleSettingsSave = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("goldenmedia_coverSize", coverSize);
+      window.localStorage.setItem(
+        "goldenmedia_showOriginalTitle",
+        String(showOriginalTitle)
+      );
+    }
+    setSettingsOpen(false);
+  };
+
   const openCreateForm = () => {
     setFormMode("create");
     setEditingItem(null);
@@ -230,6 +276,8 @@ function App() {
     setFormGenres("");
     setFormStudio("");
     setFormReleaseDate("");
+    setFormViewStartDate("");
+    setFormViewEndDate("");
     setFormCoverPath("");
     setFormCoverFile(null);
     setCoverMode("url");
@@ -255,7 +303,15 @@ function App() {
     setFormSeason(item.season ?? "");
     setFormGenres(item.genres ?? "");
     setFormStudio(item.studio ?? "");
-    setFormReleaseDate(item.release_date ?? "");
+    setFormReleaseDate(
+      item.release_date ? formatDateShort(item.release_date) ?? "" : "",
+    );
+    setFormViewStartDate(
+      item.view_start_date ? formatDateShort(item.view_start_date) ?? "" : "",
+    );
+    setFormViewEndDate(
+      item.view_end_date ? formatDateShort(item.view_end_date) ?? "" : "",
+    );
     setFormCoverPath(item.cover_path ?? "");
     setFormCoverFile(null);
     const isUrlCover =
@@ -267,10 +323,11 @@ function App() {
       setFormDurationTotal(
         item.episodes_total != null ? formatTime(item.episodes_total) : ""
       );
+      const isCompleted = item.status === "Просмотрено";
       setFormDurationWatched(
-        item.episodes_watched != null
-          ? formatTime(item.episodes_watched)
-          : ""
+        isCompleted || item.episodes_watched == null
+          ? ""
+          : formatTime(item.episodes_watched)
       );
     } else {
       setFormDurationTotal("");
@@ -341,6 +398,10 @@ function App() {
         ? (formAnimeDurationText.trim() || "23 мин.")
         : null;
 
+    const releaseDateIso = parseDateShortToIso(formReleaseDate) ?? null;
+    const viewStartIso = parseDateShortToIso(formViewStartDate) ?? null;
+    const viewEndIso = parseDateShortToIso(formViewEndDate) ?? null;
+
     const payload: Record<string, unknown> = {
       title: formTitle.trim(),
       original_title: formOriginalTitle.trim() || null,
@@ -351,7 +412,7 @@ function App() {
       season: formSeason || null,
       genres: formGenres || null,
       studio: formStudio || null,
-      release_date: formReleaseDate || null,
+      release_date: releaseDateIso,
       duration_text: finalAnimeDurationText
     };
 
@@ -367,6 +428,12 @@ function App() {
           formData.append(key, String(value));
         }
       });
+      if (viewStartIso) {
+        formData.append("view_start_date", viewStartIso);
+      }
+      if (viewEndIso) {
+        formData.append("view_end_date", viewEndIso);
+      }
       if (formCoverFile) {
         formData.append("cover", formCoverFile);
       }
@@ -393,7 +460,7 @@ function App() {
   };
 
   return (
-    <div className="app-root">
+    <div className={`app-root cover-size-${coverSize}`}>
       <header className="app-header">
         <div className="app-title-block">
           <h1 className="app-title">Golden Media</h1>
@@ -401,22 +468,26 @@ function App() {
             Учёт сериалов, фильмов, аниме, манги и книг
           </p>
         </div>
+        <div className="app-header-actions">
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Настройки интерфейса"
+            onClick={() => setSettingsOpen(true)}
+          >
+            <span className="icon-gear">⚙</span>
+          </button>
+        </div>
       </header>
 
       <main className="app-main">
         <section className="card">
           <CategoryTabs value={category} onChange={setCategory} />
 
-          <Toolbar
-            category={category}
-            onCreate={openCreateForm}
-            showOriginalTitle={showOriginalTitle}
-            onToggleOriginalTitle={() => setShowOriginalTitle((v) => !v)}
-            importInputRef={importInputRef}
-            onShikimoriImport={handleShikimoriImport}
-          />
+          <Toolbar category={category} onCreate={openCreateForm} />
 
           <FiltersPanel
+            category={category}
             selectedStatuses={selectedStatuses}
             onToggleStatus={toggleStatus}
             onResetStatuses={() => setSelectedStatuses([])}
@@ -428,6 +499,8 @@ function App() {
             onSeasonFilterChange={setSeasonFilter}
             yearFilter={yearFilter}
             onYearFilterChange={setYearFilter}
+            directorQuery={directorQuery}
+            onDirectorQueryChange={setDirectorQuery}
           />
 
           <ContentTable
@@ -463,7 +536,12 @@ function App() {
         formOriginalTitle={formOriginalTitle}
         onFormOriginalTitleChange={setFormOriginalTitle}
         formStatus={formStatus}
-        onFormStatusChange={(value) => setFormStatus(value)}
+        onFormStatusChange={(value) => {
+          setFormStatus(value);
+          if (category === "movies" && value === "Просмотрено") {
+            setFormDurationWatched("");
+          }
+        }}
         formRating={formRating}
         onFormRatingChange={setFormRating}
         formEpisodesTotal={formEpisodesTotal}
@@ -478,6 +556,10 @@ function App() {
         onFormStudioChange={setFormStudio}
         formReleaseDate={formReleaseDate}
         onFormReleaseDateChange={setFormReleaseDate}
+        formViewStartDate={formViewStartDate}
+        onFormViewStartDateChange={setFormViewStartDate}
+        formViewEndDate={formViewEndDate}
+        onFormViewEndDateChange={setFormViewEndDate}
         coverMode={coverMode}
         onCoverModeChange={switchCoverMode}
         formCoverPath={formCoverPath}
@@ -492,6 +574,19 @@ function App() {
         formAnimeDurationText={formAnimeDurationText}
         onFormAnimeDurationTextChange={setFormAnimeDurationText}
         onSubmit={handleFormSubmit}
+      />
+
+      <InterfaceSettingsDialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        category={category}
+        coverSize={coverSize}
+        onCoverSizeChange={handleCoverSizeChange}
+        showOriginalTitle={showOriginalTitle}
+        onShowOriginalTitleChange={setShowOriginalTitle}
+        importInputRef={importInputRef}
+        onShikimoriImport={handleShikimoriImport}
+        onSubmit={handleSettingsSave}
       />
     </div>
   );

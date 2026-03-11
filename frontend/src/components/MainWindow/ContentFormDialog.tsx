@@ -30,6 +30,10 @@ type ContentFormDialogProps = {
   onFormStudioChange: (value: string) => void;
   formReleaseDate: string;
   onFormReleaseDateChange: (value: string) => void;
+  formViewStartDate: string;
+  onFormViewStartDateChange: (value: string) => void;
+  formViewEndDate: string;
+  onFormViewEndDateChange: (value: string) => void;
   coverMode: CoverMode;
   onCoverModeChange: (mode: CoverMode) => void;
   formCoverPath: string;
@@ -74,6 +78,10 @@ export function ContentFormDialog({
   onFormStudioChange,
   formReleaseDate,
   onFormReleaseDateChange,
+  formViewStartDate,
+  onFormViewStartDateChange,
+  formViewEndDate,
+  onFormViewEndDateChange,
   coverMode,
   onCoverModeChange,
   formCoverPath,
@@ -106,6 +114,8 @@ export function ContentFormDialog({
     return src;
   })();
 
+  const isMoviesCompleted = category === "movies" && formStatus === "Просмотрено";
+
   return (
     <div className="dialog-backdrop" onClick={onClose}>
       <div className="dialog" onClick={(e) => e.stopPropagation()}>
@@ -118,9 +128,7 @@ export function ContentFormDialog({
             className="dialog-close"
             aria-label="Закрыть"
             onClick={onClose}
-          >
-            ×
-          </button>
+          />
         </div>
         <form className="dialog-form" onSubmit={onSubmit}>
           <div className="dialog-grid">
@@ -252,11 +260,12 @@ export function ContentFormDialog({
             </label>
 
             <label>
-              <span>Оценка (1–10)</span>
+              <span>Оценка (0–10)</span>
               <input
                 type="number"
-                min={1}
+                min={0}
                 max={10}
+                step={0.1}
                 value={formRating}
                 onChange={(e) => onFormRatingChange(e.target.value)}
               />
@@ -265,7 +274,7 @@ export function ContentFormDialog({
             {category === "movies" ? (
               <>
                 <label>
-                  <span>Длительность (чч:мм:сс)</span>
+                  <span>Продолжительность (чч:мм:сс)</span>
                   <input
                     type="text"
                     placeholder="1:42:54"
@@ -273,13 +282,18 @@ export function ContentFormDialog({
                     onChange={(e) => onFormDurationTotalChange(e.target.value)}
                   />
                 </label>
-                <label>
+                <label
+                  className={
+                    isMoviesCompleted ? "duration-watched-label-disabled" : undefined
+                  }
+                >
                   <span>Просмотрено (чч:мм:сс)</span>
                   <input
                     type="text"
                     placeholder="0:33:12"
                     value={formDurationWatched}
                     onChange={(e) => onFormDurationWatchedChange(e.target.value)}
+                    disabled={isMoviesCompleted}
                   />
                 </label>
               </>
@@ -319,15 +333,27 @@ export function ContentFormDialog({
               </>
             )}
 
-            <label>
-              <span>Сезон / год</span>
-              <input
-                type="text"
-                placeholder={category === "movies" ? "2014" : "Лето 2014"}
-                value={formSeason}
-                onChange={(e) => onFormSeasonChange(e.target.value)}
-              />
-            </label>
+            {category === "movies" ? (
+              <label>
+                <span>Год выхода</span>
+                <input
+                  type="text"
+                  placeholder="ДД.ММ.ГГГГ"
+                  value={formReleaseDate}
+                  onChange={(e) => onFormReleaseDateChange(e.target.value)}
+                />
+              </label>
+            ) : (
+              <label>
+                <span>Сезон / год</span>
+                <input
+                  type="text"
+                  placeholder="Лето 2014"
+                  value={formSeason}
+                  onChange={(e) => onFormSeasonChange(e.target.value)}
+                />
+              </label>
+            )}
 
             <label>
               <span>Жанры (через запятую)</span>
@@ -339,7 +365,7 @@ export function ContentFormDialog({
             </label>
 
             <label>
-              <span>Студия</span>
+              <span>{category === "movies" ? "Режиссёр" : "Студия"}</span>
               <input
                 type="text"
                 value={formStudio}
@@ -347,15 +373,28 @@ export function ContentFormDialog({
               />
             </label>
 
-            <label>
-              <span>Дата выхода (опц.)</span>
-              <input
-                type="text"
-                placeholder="YYYY-MM-DD"
-                value={formReleaseDate}
-                onChange={(e) => onFormReleaseDateChange(e.target.value)}
-              />
-            </label>
+            {category === "movies" && (
+              <>
+                <label>
+                  <span>Дата начала просмотра (опц.)</span>
+                  <input
+                    type="text"
+                    placeholder="ДД.ММ.ГГГГ"
+                    value={formViewStartDate}
+                    onChange={(e) => onFormViewStartDateChange(e.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>Дата окончания просмотра (опц.)</span>
+                  <input
+                    type="text"
+                    placeholder="ДД.ММ.ГГГГ"
+                    value={formViewEndDate}
+                    onChange={(e) => onFormViewEndDateChange(e.target.value)}
+                  />
+                </label>
+              </>
+            )}
           </div>
 
           <div className="dialog-actions">

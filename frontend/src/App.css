@@ -25,6 +25,12 @@
   border: 1px solid rgba(148, 163, 184, 0.2);
 }
 
+.app-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .app-title-block {
   display: flex;
   flex-direction: column;
@@ -47,6 +53,38 @@
   color: #cbd5f5;
   font-size: 0.95rem;
   opacity: 0.85;
+}
+
+.icon-btn {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: rgba(15, 23, 42, 0.9);
+  color: #e5e7eb;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.08s ease;
+}
+
+.icon-btn:hover {
+  border-color: rgba(250, 204, 21, 0.85);
+  background: radial-gradient(circle at 30% 30%, #111827 0, #020617 65%);
+  box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.4);
+}
+
+.icon-btn:active {
+  transform: translateY(1px) scale(0.97);
+}
+
+.icon-gear {
+  font-size: 1.05rem;
 }
 
 .app-main {
@@ -447,6 +485,56 @@ select:focus {
   color: #9ca3af;
 }
 
+.duration-cell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.duration-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: 110%;
+  transform: translate(-50%, 4px);
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.6rem;
+  background: rgba(15, 23, 42, 0.98);
+  border: 1px solid rgba(148, 163, 184, 0.9);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.9);
+  font-size: 0.78rem;
+  color: #e5e7eb;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.15s ease-out,
+    transform 0.15s ease-out;
+  z-index: 10;
+}
+
+.duration-cell:hover .duration-tooltip {
+  opacity: 1;
+  transform: translate(-50%, -2px);
+}
+
+.duration-tooltip-line {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.duration-tooltip-line + .duration-tooltip-line {
+  margin-top: 0.15rem;
+}
+
+.duration-tooltip-label {
+  color: #9ca3af;
+}
+
+.duration-tooltip-value {
+  color: #e5e7eb;
+}
+
 .title-cell-main {
   font-weight: 500;
 }
@@ -481,6 +569,23 @@ select:focus {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+/* Настройки размера обложек через модификаторы на корневом контейнере */
+
+.cover-size-small .cover-thumb {
+  width: 52px;
+  height: 74px;
+}
+
+.cover-size-medium .cover-thumb {
+  width: 72px;
+  height: 104px;
+}
+
+.cover-size-large .cover-thumb {
+  width: 92px;
+  height: 132px;
 }
 
 .cover-thumb.placeholder {
@@ -610,10 +715,8 @@ input[type="number"] {
   height: 2.1rem;
   border-radius: 999px;
   border: none;
+  position: relative;
   background: radial-gradient(circle at 30% 30%, #facc15 0, #f97316 35%, #0f172a 80%);
-  color: #0b1120;
-  font-size: 1.4rem;
-  line-height: 1;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -622,6 +725,24 @@ input[type="number"] {
     transform 0.08s ease,
     box-shadow 0.12s ease,
     transform 0.05s ease;
+}
+
+.dialog-close::before,
+.dialog-close::after {
+  content: "";
+  position: absolute;
+  width: 58%;
+  height: 2px;
+  border-radius: 999px;
+  background: #020617;
+}
+
+.dialog-close::before {
+  transform: rotate(45deg);
+}
+
+.dialog-close::after {
+  transform: rotate(-45deg);
 }
 
 .dialog-close:hover {
@@ -643,6 +764,16 @@ input[type="number"] {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem 1rem;
+}
+
+.dialog-grid-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.cover-size-options {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
 }
 
 .cover-block {
@@ -776,6 +907,31 @@ input[type="number"] {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: #9ca3af;
+}
+
+.duration-watched-label-disabled {
+  cursor: not-allowed;
+}
+
+.duration-watched-label-disabled input:disabled {
+  cursor: not-allowed;
+}
+
+.duration-watched-label-disabled input {
+  transition: none;
+}
+
+.duration-watched-label-disabled:hover span {
+  color: #f97373;
+}
+
+.duration-watched-label-disabled:hover input::placeholder {
+  color: #f97373;
+}
+
+.duration-watched-label-disabled:hover input {
+  border-color: #f97373;
+  box-shadow: 0 0 0 1px rgba(249, 115, 115, 0.8);
 }
 
 .dialog-actions {
