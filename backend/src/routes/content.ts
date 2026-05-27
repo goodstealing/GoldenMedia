@@ -41,8 +41,7 @@ function mapShikimoriStatus(status: ShikimoriStatus): string {
 }
 
 // Корень для обложек: GoldenMedia/backend/src/data/covers/:category
-const backendSrcRoot = __dirname;
-const coversRoot = path.join(backendSrcRoot, "data", "covers");
+const coversRoot = path.join(__dirname, "..", "data", "covers");
 
 function ensureCategoryCoverDir(category: ContentCategory): string {
   const dir = path.join(coversRoot, category);
@@ -52,12 +51,62 @@ function ensureCategoryCoverDir(category: ContentCategory): string {
   return dir;
 }
 
-function sanitizeFilename(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\u0400-\u04FF]+/gi, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
+function sanitizeTitleForFilename(raw: string): string {
+  // Windows invalid: < > : " / \ | ? *  + control chars + trailing dots/spaces
+  // Keep original casing, spaces, кириллицу/латиницу/цифры and a few safe separators.
+  const cleaned = raw
+    .replace(/[\u0000-\u001F<>:"/\\|?*]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[. ]+$/g, "")
+    .slice(0, 120)
+    .trim();
+
+  return cleaned || "cover";
+}
+
+function inferExtension(file: Express.Multer.File): string {
+  const ext = path.extname(file.originalname || "").trim();
+  if (ext) return ext.toLowerCase();
+  // Fallback: very small mapping for common image types
+  switch (file.mimetype) {
+    case "image/png":
+      return ".png";
+    case "image/webp":
+      return ".webp";
+    case "image/gif":
+      return ".gif";
+    case "image/jpeg":
+      return ".jpg";
+    default:
+      return ".jpg";
+  }
+}
+
+function ensureUniqueFilename(dir: string, base: string, ext: string): string {
+  const safeExt = ext.startsWith(".") ? ext : `.${ext}`;
+  const baseClean = sanitizeTitleForFilename(base);
+  let candidate = `${baseClean}${safeExt}`;
+  if (!fs.existsSync(path.join(dir, candidate))) return candidate;
+
+  for (let i = 2; i < 10_000; i += 1) {
+    candidate = `${baseClean} (${i})${safeExt}`;
+    if (!fs.existsSync(path.join(dir, candidate))) return candidate;
+  }
+  // Extremely unlikely, but still provide something deterministic
+  return `${baseClean} (${Date.now()})${safeExt}`;
+}
+
+function getLocalCoverFsPath(
+  category: ContentCategory,
+  coverPath: unknown
+): string | null {
+  if (typeof coverPath !== "string") return null;
+  const prefix = `/covers/${category}/`;
+  if (!coverPath.startsWith(prefix)) return null;
+  const filename = coverPath.slice(prefix.length);
+  if (!filename) return null;
+  return path.join(coversRoot, category, filename);
 }
 
 const storage = multer.diskStorage({
@@ -77,18 +126,48 @@ const storage = multer.diskStorage({
       original_title?: string;
     };
     const baseSource =
-      original_title && original_title.trim()
-        ? original_title.trim()
-        : title && title.trim()
+      title && title.trim()
         ? title.trim()
+        : original_title && original_title.trim()
+        ? original_title.trim()
         : file.originalname;
-    const safeBase = sanitizeFilename(baseSource || "cover");
-    const ext = path.extname(file.originalname) || ".jpg";
-    cb(null, `${safeBase}${ext}`);
+    const safeCategory = (req.params.category as ContentCategory) ?? "anime";
+    const dir = ensureCategoryCoverDir(
+      ["anime", "movies", "series", "manga", "books"].includes(safeCategory)
+        ? safeCategory
+        : "anime"
+    );
+    const ext = inferExtension(file);
+    const filename = ensureUniqueFilename(dir, baseSource || "cover", ext);
+    cb(null, filename);
   }
 });
 
 const upload = multer({ storage });
+
+// Получить один элемент по id
+router.get("/:category/:id", async (req, res) => {
+  try {
+    const category = req.params.category as ContentCategory;
+    const id = Number(req.params.id);
+
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid id" });
+    }
+
+    const db = await getDatabase(category);
+    const row = await db.get("SELECT * FROM content WHERE id = ?", id);
+
+    if (!row) {
+      return res.status(404).json({ error: "Not found" });
+    }
+
+    res.json(row);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to load content item" });
+  }
+});
 
 // Получить список контента с поддержкой фильтров и сортировки
 router.get("/:category", async (req, res) => {
@@ -174,10 +253,14 @@ router.get("/:category", async (req, res) => {
         orderBy = `ORDER BY episodes_total ${dir}`;
         break;
       case "season":
-        // Сортировка по году + времени года, если строка формата "Лето 2014"
-        orderBy = `ORDER BY 
-          CAST(substr(season, instr(season, ' ') + 1) AS INTEGER) ${dir},
-          season ${dir}`;
+        if (category === "anime") {
+          // Сортировка по году + времени года, если строка формата "Лето 2014"
+          orderBy = `ORDER BY 
+            CAST(substr(season, instr(season, ' ') + 1) AS INTEGER) ${dir},
+            season ${dir}`;
+        } else {
+          orderBy = `ORDER BY release_date ${dir}`;
+        }
         break;
       case "studio":
         orderBy = `ORDER BY studio COLLATE NOCASE ${dir}`;
@@ -332,7 +415,8 @@ router.post("/:category", upload.single("cover"), async (req, res) => {
       duration_text,
       cover_path,
       view_start_date,
-      view_end_date
+      view_end_date,
+      description
     } = req.body as {
       title?: string;
       original_title?: string;
@@ -348,6 +432,7 @@ router.post("/:category", upload.single("cover"), async (req, res) => {
       cover_path?: string;
       view_start_date?: string;
       view_end_date?: string;
+      description?: string;
     };
 
     if (!title || typeof title !== "string" || !title.trim()) {
@@ -425,10 +510,15 @@ router.post("/:category", upload.single("cover"), async (req, res) => {
       }
     }
 
+    const finalDescription =
+      typeof description === "string" && description.trim()
+        ? description.trim()
+        : null;
+
     const result = await db.run(
       `INSERT INTO content 
-      (title, original_title, cover_path, status, rating, episodes_total, episodes_watched, season, genres, studio, release_date, duration_text, view_start_date, view_end_date)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (title, original_title, cover_path, status, rating, episodes_total, episodes_watched, season, genres, studio, release_date, duration_text, view_start_date, view_end_date, description)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         normalizedTitle,
         original_title ?? null,
@@ -443,7 +533,8 @@ router.post("/:category", upload.single("cover"), async (req, res) => {
         release_date ?? null,
         duration_text ?? null,
         finalViewStart,
-        finalViewEnd
+        finalViewEnd,
+        finalDescription
       ]
     );
 
@@ -490,6 +581,20 @@ router.put(
         ? body.cover_path.trim()
         : existing.cover_path;
 
+    // If user uploaded a new local cover, remove previous local cover file to prevent junk.
+    if (file != null) {
+      const prevFsPath = getLocalCoverFsPath(category, existing.cover_path);
+      const nextFsPath = getLocalCoverFsPath(category, nextCoverPath);
+      if (prevFsPath && nextFsPath && prevFsPath !== nextFsPath) {
+        try {
+          if (fs.existsSync(prevFsPath)) fs.unlinkSync(prevFsPath);
+        } catch (e) {
+          // Non-fatal: keep request successful even if old file couldn't be deleted
+          console.warn("Failed to delete previous cover file", e);
+        }
+      }
+    }
+
     const updated = {
       ...existing,
       ...body,
@@ -529,6 +634,11 @@ router.put(
       }
     }
 
+    const nextDescription =
+      typeof body.description === "string"
+        ? body.description.trim() || null
+        : (existing.description as string | null) ?? null;
+
     await db.run(
       `UPDATE content SET 
         title = ?, 
@@ -544,7 +654,8 @@ router.put(
         release_date = ?,
         duration_text = ?,
         view_start_date = ?,
-        view_end_date = ?
+        view_end_date = ?,
+        description = ?
       WHERE id = ?`,
       [
         updated.title,
@@ -561,6 +672,7 @@ router.put(
         updated.duration_text,
         nextViewStart,
         nextViewEnd,
+        nextDescription,
         id
       ]
     );

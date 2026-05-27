@@ -1,4 +1,10 @@
 import type { Category, Status } from "../../domain";
+import {
+  getPersonStudioFilterLabel,
+  getPersonStudioFilterPlaceholder,
+  usesPersonStudioFilter,
+  usesSeasonFilter,
+} from "../../utils/categoryLabels";
 
 type SeasonFilter = "Все" | "Зима" | "Весна" | "Лето" | "Осень";
 
@@ -35,6 +41,9 @@ export function FiltersPanel({
   directorQuery,
   onDirectorQueryChange,
 }: FiltersPanelProps) {
+  const showSeasonFilter = usesSeasonFilter(category);
+  const showPersonFilter = usesPersonStudioFilter(category);
+
   return (
     <div className="filters">
       <div className="filters-row">
@@ -93,59 +102,48 @@ export function FiltersPanel({
       </div>
 
       <div className="filters-row">
-        {category === "movies" ? (
-          <>
-            <div className="filter-group">
-              <label className="filter-label">Поиск по режиссёрам</label>
-              <input
-                type="text"
-                placeholder="Напр. Кристофер Нолан"
-                value={directorQuery}
-                onChange={(e) => onDirectorQueryChange(e.target.value)}
-              />
-            </div>
-
-            <div className="filter-group">
-              <label className="filter-label">Год выхода</label>
-              <input
-                type="number"
-                placeholder="Напр. 2014"
-                value={yearFilter}
-                onChange={(e) => onYearFilterChange(e.target.value)}
-              />
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="filter-group">
-              <label className="filter-label">Сезон</label>
-              <select
-                value={seasonFilter}
-                onChange={(e) =>
-                  onSeasonFilterChange(e.target.value as SeasonFilter)
-                }
-              >
-                <option value="Все">Все</option>
-                <option value="Зима">Зима</option>
-                <option value="Весна">Весна</option>
-                <option value="Лето">Лето</option>
-                <option value="Осень">Осень</option>
-              </select>
-            </div>
-
-            <div className="filter-group">
-              <label className="filter-label">Год выхода</label>
-              <input
-                type="number"
-                placeholder="Напр. 2014"
-                value={yearFilter}
-                onChange={(e) => onYearFilterChange(e.target.value)}
-              />
-            </div>
-          </>
+        {showPersonFilter && (
+          <div className="filter-group">
+            <label className="filter-label">
+              {getPersonStudioFilterLabel(category)}
+            </label>
+            <input
+              type="text"
+              placeholder={getPersonStudioFilterPlaceholder(category)}
+              value={directorQuery}
+              onChange={(e) => onDirectorQueryChange(e.target.value)}
+            />
+          </div>
         )}
+
+        {showSeasonFilter && (
+          <div className="filter-group">
+            <label className="filter-label">Сезон</label>
+            <select
+              value={seasonFilter}
+              onChange={(e) =>
+                onSeasonFilterChange(e.target.value as SeasonFilter)
+              }
+            >
+              <option value="Все">Все</option>
+              <option value="Зима">Зима</option>
+              <option value="Весна">Весна</option>
+              <option value="Лето">Лето</option>
+              <option value="Осень">Осень</option>
+            </select>
+          </div>
+        )}
+
+        <div className="filter-group">
+          <label className="filter-label">Год выхода</label>
+          <input
+            type="number"
+            placeholder="Напр. 2014"
+            value={yearFilter}
+            onChange={(e) => onYearFilterChange(e.target.value)}
+          />
+        </div>
       </div>
     </div>
   );
 }
-

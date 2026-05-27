@@ -32,6 +32,30 @@ export function parseDurationToSeconds(value: string): number | null {
   return seconds >= 0 ? seconds : null;
 }
 
+export function formatYear(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  const isoMatch = trimmed.match(/^(\d{4})/);
+  if (isoMatch) return isoMatch[1];
+  const short = formatDateShort(trimmed);
+  if (short) {
+    const parts = short.split(".");
+    return parts[2] ?? null;
+  }
+  const embedded = trimmed.match(/\b(19|20)\d{2}\b/);
+  return embedded ? embedded[0] : null;
+}
+
+export function parseYearToIso(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^\d{4}$/.test(trimmed)) {
+    return `${trimmed}-01-01`;
+  }
+  return parseDateShortToIso(trimmed);
+}
+
 export function formatDateShort(value: string | null | undefined): string | null {
   if (!value) return null;
   const iso = value.trim();

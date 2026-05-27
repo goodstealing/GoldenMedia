@@ -65,5 +65,9 @@ async function ensureSchema(db: Database): Promise<void> {
   if (!hasViewEnd) {
     await db.exec("ALTER TABLE content ADD COLUMN view_end_date TEXT;");
   }
+  const hasDescription = columns.some((col) => col.name === "description");
+  if (!hasDescription) {
+    await db.exec("ALTER TABLE content ADD COLUMN description TEXT;");
+  }
 }
 

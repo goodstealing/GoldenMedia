@@ -33,7 +33,24 @@ export type ContentItem = {
   duration_text: string | null;
   view_start_date: string | null;
   view_end_date: string | null;
+  description: string | null;
 };
+
+export const CATEGORY_IDS: Category[] = [
+  "series",
+  "movies",
+  "anime",
+  "manga",
+  "books",
+];
+
+export function isCategory(value: string): value is Category {
+  return (CATEGORY_IDS as string[]).includes(value);
+}
+
+export function getConsumeActionLabel(category: Category): string {
+  return category === "books" || category === "manga" ? "Читать" : "Смотреть";
+}
 
 export type PaginatedContentResponse = {
   items: ContentItem[];

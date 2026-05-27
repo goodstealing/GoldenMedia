@@ -4,7 +4,12 @@ import { buildCoverUrl } from "../../utils/api";
 import ProgressBar from "../UI/ProgressBar";
 import { renderEpisodesOrDuration } from "./renderEpisodesOrDuration";
 import {
-  formatDateShort,
+  displayYearOrSeason,
+  getEpisodesColumnLabel,
+  getStudioColumnLabel,
+  getYearColumnLabel,
+} from "../../utils/categoryLabels";
+import {
   formatHoursMinutes,
   formatViewPeriodInline,
 } from "../../utils/time";
@@ -22,6 +27,7 @@ type ContentTableProps = {
   showOriginalTitle: boolean;
   onEdit: (item: ContentItem) => void;
   onDelete: (item: ContentItem) => void;
+  onItemOpen?: (item: ContentItem) => void;
 };
 
 export function ContentTable({
@@ -35,6 +41,7 @@ export function ContentTable({
   showOriginalTitle,
   onEdit,
   onDelete,
+  onItemOpen,
 }: ContentTableProps) {
   return (
     <div className="table-wrapper">
@@ -56,16 +63,16 @@ export function ContentTable({
                 {sortBy === "rating" && <span>{sortDir === "asc" ? "▲" : "▼"}</span>}
               </th>
               <th onClick={() => onSortChange("episodes")}>
-                {category === "movies" ? "Продолжительность" : "Эпизоды"}{" "}
+                {getEpisodesColumnLabel(category)}{" "}
                 {sortBy === "episodes" && <span>{sortDir === "asc" ? "▲" : "▼"}</span>}
               </th>
               <th onClick={() => onSortChange("season")}>
-                {category === "movies" ? "Год выхода" : "Сезон / Год"}{" "}
+                {getYearColumnLabel(category)}{" "}
                 {sortBy === "season" && <span>{sortDir === "asc" ? "▲" : "▼"}</span>}
               </th>
               <th>Жанры</th>
               <th onClick={() => onSortChange("studio")}>
-                {category === "movies" ? "Режиссёр" : "Студия"}{" "}
+                {getStudioColumnLabel(category)}{" "}
                 {sortBy === "studio" && <span>{sortDir === "asc" ? "▲" : "▼"}</span>}
               </th>
               <th onClick={() => onSortChange("progress")}>
@@ -85,7 +92,13 @@ export function ContentTable({
             {items.map((item) => (
               <tr key={item.id}>
                 <td>
-                  <div className="cover-thumb">
+                  <button
+                    type="button"
+                    className="cover-thumb cover-thumb-btn"
+                    disabled={!onItemOpen}
+                    onClick={() => onItemOpen?.(item)}
+                    aria-label={`Открыть «${item.title}»`}
+                  >
                     {item.cover_path ? (
                       <img
                         src={buildCoverUrl(item.cover_path)}
@@ -102,7 +115,7 @@ export function ContentTable({
                     ) : (
                       <span className="cover-thumb-text">Нет обложки</span>
                     )}
-                  </div>
+                  </button>
                 </td>
                 <td>
                   {(() => {
@@ -123,12 +136,33 @@ export function ContentTable({
                       }
                     }
 
+                    const openItem = () => onItemOpen?.(item);
+
                     return (
                       <>
-                        <div className="title-cell-main">{primaryTitle}</div>
-                        {secondaryTitle && (
-                          <div className="title-cell-alt">{secondaryTitle}</div>
+                        {onItemOpen ? (
+                          <button
+                            type="button"
+                            className="title-cell-link title-cell-main"
+                            onClick={openItem}
+                          >
+                            {primaryTitle}
+                          </button>
+                        ) : (
+                          <div className="title-cell-main">{primaryTitle}</div>
                         )}
+                        {secondaryTitle &&
+                          (onItemOpen ? (
+                            <button
+                              type="button"
+                              className="title-cell-link title-cell-alt"
+                              onClick={openItem}
+                            >
+                              {secondaryTitle}
+                            </button>
+                          ) : (
+                            <div className="title-cell-alt">{secondaryTitle}</div>
+                          ))}
                       </>
                     );
                   })()}
@@ -197,11 +231,7 @@ export function ContentTable({
                     )
                   )}
                 </td>
-                <td>
-                  {category === "movies"
-                    ? formatDateShort(item.release_date) ?? "—"
-                    : item.season ?? "—"}
-                </td>
+                <td>{displayYearOrSeason(item, category)}</td>
                 <td>{item.genres ?? "—"}</td>
                 <td>{item.studio ?? "—"}</td>
                 <td>
