@@ -7,7 +7,11 @@ import type {
   Status,
   PaginatedContentResponse,
 } from "../domain";
-import { isCategory } from "../domain";
+import {
+  getFilterStatusValues,
+  isCategory,
+  isReadableCategory,
+} from "../domain";
 import {
   usesPersonStudioFilter,
   usesSeasonFilter,
@@ -132,6 +136,17 @@ export function ContentListPage({
   };
 
   useEffect(() => {
+    if (!isReadableCategory(category)) return;
+    setSelectedStatuses((prev) =>
+      prev.map((status) => {
+        if (status === "Смотрю") return "Читаю";
+        if (status === "Просмотрено") return "Прочитано";
+        return status;
+      }),
+    );
+  }, [category]);
+
+  useEffect(() => {
     const controller = new AbortController();
     async function load() {
       try {
@@ -140,7 +155,10 @@ export function ContentListPage({
 
         const params = new URLSearchParams();
         if (selectedStatuses.length > 0) {
-          params.set("status", selectedStatuses.join(","));
+          const statusValues = selectedStatuses.flatMap((status) =>
+            getFilterStatusValues(category, status),
+          );
+          params.set("status", Array.from(new Set(statusValues)).join(","));
         }
         if (titleQuery.trim()) params.set("title", titleQuery.trim());
         if (genresQuery.trim()) params.set("genres", genresQuery.trim());

@@ -2,11 +2,12 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useState } from "react";
 import {
   CATEGORIES,
-  STATUSES,
+  getInProgressStatus,
+  getStatusesForCategory,
+  normalizeStatusForCategory,
   getConsumeActionLabel,
   getStatusClassName,
   isCategory,
-  type Category,
   type Status,
 } from "../domain";
 import { useContentItem } from "../hooks/useContentItem";
@@ -31,10 +32,6 @@ import {
   formatViewPeriodInline,
 } from "../utils/time";
 
-function isReadableCategory(category: Category): boolean {
-  return category === "books" || category === "manga";
-}
-
 export function TitleDetailPage() {
   const navigate = useNavigate();
   const params = useParams();
@@ -48,6 +45,11 @@ export function TitleDetailPage() {
   const { item, setItem, loading, error, reload } = useContentItem(
     category ?? "anime",
     Number.isFinite(idParam) ? idParam : 0,
+  );
+  const statuses = getStatusesForCategory(category ?? "anime");
+  const normalizedItemStatus = normalizeStatusForCategory(
+    category ?? "anime",
+    item?.status ?? null,
   );
 
   const form = useContentForm({
@@ -84,10 +86,11 @@ export function TitleDetailPage() {
   const handlePrimaryAction = async () => {
     if (!item) return;
 
-    if (isReadableCategory(category)) {
-      if (item.status !== "Смотрю") {
+    if (category === "books" || category === "manga") {
+      const inProgressStatus = getInProgressStatus(category);
+      if (normalizedItemStatus !== inProgressStatus) {
         try {
-          const updated = await updateContentStatus(category, item, "Смотрю");
+          const updated = await updateContentStatus(category, item, inProgressStatus);
           setItem(updated);
         } catch (e) {
           alert((e as Error).message);
@@ -98,7 +101,7 @@ export function TitleDetailPage() {
       return;
     }
 
-    if (item.status !== "Смотрю") {
+    if (normalizedItemStatus !== "Смотрю") {
       await handleStatusChange("Смотрю");
     }
   };
@@ -169,10 +172,10 @@ export function TitleDetailPage() {
                 </div>
                 <span
                   className={`status-badge ${getStatusClassName(
-                    item.status ?? "Запланировано",
+                    normalizedItemStatus ?? "Запланировано",
                   )}`}
                 >
-                  {item.status ?? "Запланировано"}
+                  {normalizedItemStatus ?? "Запланировано"}
                 </span>
               </div>
 
@@ -184,14 +187,6 @@ export function TitleDetailPage() {
                 >
                   {getConsumeActionLabel(category)}
                 </button>
-                {isReadableCategory(category) && (
-                  <Link
-                    className="btn btn-secondary"
-                    to={titleReaderPath(category, item.id)}
-                  >
-                    Режим чтения
-                  </Link>
-                )}
                 <button
                   type="button"
                   className="btn btn-secondary"
@@ -211,12 +206,12 @@ export function TitleDetailPage() {
               <div className="title-detail-status-row">
                 <span className="title-detail-label">Статус:</span>
                 <div className="title-detail-statuses">
-                  {STATUSES.map((status) => (
+                  {statuses.map((status) => (
                     <button
                       key={status}
                       type="button"
                       className={`chip ${
-                        item.status === status ? "chip-active" : ""
+                        normalizedItemStatus === status ? "chip-active" : ""
                       }`}
                       disabled={statusUpdating}
                       onClick={() => handleStatusChange(status)}

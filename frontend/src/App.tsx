@@ -56,6 +56,14 @@ function App() {
           }
         />
         <Route
+          path="/books/:id/read"
+          element={
+            <AppShell>
+              <BookReaderPage />
+            </AppShell>
+          }
+        />
+        <Route
           path="/:category/:id/read"
           element={
             <AppShell>

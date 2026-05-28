@@ -2,13 +2,13 @@ import fs from "fs";
 import path from "path";
 import sqlite3 from "sqlite3";
 import { open, Database } from "sqlite";
+import { getDatabaseRootPath } from "../files/dataPaths";
 
 export type ContentCategory = "anime" | "movies" | "series" | "manga" | "books";
 
 export async function getDatabase(category: ContentCategory): Promise<Database> {
   // База должна лежать в GoldenMedia/backend/src/data/databases
-  const backendSrcRoot = __dirname;
-  const dbDir = path.join(backendSrcRoot, "..", "data", "databases");
+  const dbDir = getDatabaseRootPath();
 
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
@@ -69,5 +69,40 @@ async function ensureSchema(db: Database): Promise<void> {
   if (!hasDescription) {
     await db.exec("ALTER TABLE content ADD COLUMN description TEXT;");
   }
+
+  const hasBookFilePath = columns.some((col) => col.name === "book_file_path");
+  if (!hasBookFilePath) {
+    await db.exec("ALTER TABLE content ADD COLUMN book_file_path TEXT;");
+  }
+  const hasBookFileFormat = columns.some((col) => col.name === "book_file_format");
+  if (!hasBookFileFormat) {
+    await db.exec("ALTER TABLE content ADD COLUMN book_file_format TEXT;");
+  }
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS reading_progress (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      content_id INTEGER NOT NULL,
+      current_page INTEGER NOT NULL DEFAULT 1,
+      total_pages INTEGER NOT NULL DEFAULT 1,
+      location TEXT,
+      progress_percent REAL NOT NULL DEFAULT 0,
+      font_size INTEGER NOT NULL DEFAULT 18,
+      theme TEXT NOT NULL DEFAULT 'dark',
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(content_id),
+      FOREIGN KEY(content_id) REFERENCES content(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS reading_bookmarks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      content_id INTEGER NOT NULL,
+      page INTEGER NOT NULL,
+      location TEXT,
+      label TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(content_id) REFERENCES content(id) ON DELETE CASCADE
+    );
+  `);
 }
 

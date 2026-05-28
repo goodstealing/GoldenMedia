@@ -1,4 +1,4 @@
-import type { Category, Status } from "../../domain";
+import { getStatusesForCategory, type Category, type Status } from "../../domain";
 import {
   getPersonStudioFilterLabel,
   getPersonStudioFilterPlaceholder,
@@ -43,6 +43,7 @@ export function FiltersPanel({
 }: FiltersPanelProps) {
   const showSeasonFilter = usesSeasonFilter(category);
   const showPersonFilter = usesPersonStudioFilter(category);
+  const statuses = getStatusesForCategory(category);
 
   return (
     <div className="filters">
@@ -59,20 +60,18 @@ export function FiltersPanel({
             >
               Все
             </button>
-            {["Запланировано", "Смотрю", "Просмотрено", "Отложено", "Брошено", "Любимое"].map(
-              (s) => (
-                <button
-                  key={s}
-                  type="button"
-                  className={`chip ${
-                    selectedStatuses.includes(s as Status) ? "chip-active" : ""
-                  }`}
-                  onClick={() => onToggleStatus(s as Status)}
-                >
-                  {s}
-                </button>
-              ),
-            )}
+            {statuses.map((status) => (
+              <button
+                key={status}
+                type="button"
+                className={`chip ${
+                  selectedStatuses.includes(status as Status) ? "chip-active" : ""
+                }`}
+                onClick={() => onToggleStatus(status as Status)}
+              >
+                {status}
+              </button>
+            ))}
           </div>
         </div>
       </div>

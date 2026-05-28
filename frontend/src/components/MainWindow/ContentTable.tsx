@@ -1,5 +1,5 @@
-import type { Category, ContentItem, Status } from "../../domain";
-import { getStatusClassName } from "../../domain";
+import type { Category, ContentItem } from "../../domain";
+import { getStatusClassName, normalizeStatusForCategory } from "../../domain";
 import { buildCoverUrl } from "../../utils/api";
 import ProgressBar from "../UI/ProgressBar";
 import { renderEpisodesOrDuration } from "./renderEpisodesOrDuration";
@@ -89,8 +89,11 @@ export function ContentTable({
                 </td>
               </tr>
             )}
-            {items.map((item) => (
-              <tr key={item.id}>
+            {items.map((item) => {
+              const normalizedStatus =
+                normalizeStatusForCategory(category, item.status) ?? "Запланировано";
+              return (
+                <tr key={item.id}>
                 <td>
                   <button
                     type="button"
@@ -170,10 +173,10 @@ export function ContentTable({
                 <td>
                   <span
                     className={`status-badge ${getStatusClassName(
-                      (item.status as Status) ?? "Запланировано",
+                      normalizedStatus,
                     )}`}
                   >
-                    {item.status ?? "Запланировано"}
+                    {normalizedStatus}
                   </span>
                 </td>
                 <td className="td-numeric">
@@ -260,8 +263,9 @@ export function ContentTable({
                     </button>
                   </div>
                 </td>
-              </tr>
-            ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}

@@ -1,8 +1,14 @@
 import { Router } from "express";
 import multer from "multer";
-import fs from "fs";
-import path from "path";
 import { getDatabase, ContentCategory } from "../db/connection";
+import { saveCoverAsWebp } from "../files/imageService";
+import { saveBookFile } from "../files/bookFileService";
+import { normalizeBookExtension } from "../files/fileNaming";
+import {
+  getLocalBookFsPath,
+  getLocalCoverFsPath,
+  safeDeleteFile
+} from "../files/fileOps";
 
 const router = Router();
 
@@ -40,110 +46,42 @@ function mapShikimoriStatus(status: ShikimoriStatus): string {
   }
 }
 
-// Корень для обложек: GoldenMedia/backend/src/data/covers/:category
-const coversRoot = path.join(__dirname, "..", "data", "covers");
+const allowedImageMimeTypes = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/avif"
+]);
 
-function ensureCategoryCoverDir(category: ContentCategory): string {
-  const dir = path.join(coversRoot, category);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+function getReaderCategory(value: string): ContentCategory | null {
+  if (value === "books" || value === "manga") {
+    return value;
   }
-  return dir;
+  return null;
 }
 
-function sanitizeTitleForFilename(raw: string): string {
-  // Windows invalid: < > : " / \ | ? *  + control chars + trailing dots/spaces
-  // Keep original casing, spaces, кириллицу/латиницу/цифры and a few safe separators.
-  const cleaned = raw
-    .replace(/[\u0000-\u001F<>:"/\\|?*]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/[. ]+$/g, "")
-    .slice(0, 120)
-    .trim();
-
-  return cleaned || "cover";
-}
-
-function inferExtension(file: Express.Multer.File): string {
-  const ext = path.extname(file.originalname || "").trim();
-  if (ext) return ext.toLowerCase();
-  // Fallback: very small mapping for common image types
-  switch (file.mimetype) {
-    case "image/png":
-      return ".png";
-    case "image/webp":
-      return ".webp";
-    case "image/gif":
-      return ".gif";
-    case "image/jpeg":
-      return ".jpg";
-    default:
-      return ".jpg";
-  }
-}
-
-function ensureUniqueFilename(dir: string, base: string, ext: string): string {
-  const safeExt = ext.startsWith(".") ? ext : `.${ext}`;
-  const baseClean = sanitizeTitleForFilename(base);
-  let candidate = `${baseClean}${safeExt}`;
-  if (!fs.existsSync(path.join(dir, candidate))) return candidate;
-
-  for (let i = 2; i < 10_000; i += 1) {
-    candidate = `${baseClean} (${i})${safeExt}`;
-    if (!fs.existsSync(path.join(dir, candidate))) return candidate;
-  }
-  // Extremely unlikely, but still provide something deterministic
-  return `${baseClean} (${Date.now()})${safeExt}`;
-}
-
-function getLocalCoverFsPath(
-  category: ContentCategory,
-  coverPath: unknown
-): string | null {
-  if (typeof coverPath !== "string") return null;
-  const prefix = `/covers/${category}/`;
-  if (!coverPath.startsWith(prefix)) return null;
-  const filename = coverPath.slice(prefix.length);
-  if (!filename) return null;
-  return path.join(coversRoot, category, filename);
-}
-
-const storage = multer.diskStorage({
-  destination: (req, _file, cb) => {
-    const category = req.params
-      .category as ContentCategory | undefined;
-    const safeCategory: ContentCategory =
-      category && ["anime", "movies", "series", "manga", "books"].includes(category)
-        ? (category as ContentCategory)
-        : "anime";
-    const dir = ensureCategoryCoverDir(safeCategory);
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    const { title, original_title } = req.body as {
-      title?: string;
-      original_title?: string;
-    };
-    const baseSource =
-      title && title.trim()
-        ? title.trim()
-        : original_title && original_title.trim()
-        ? original_title.trim()
-        : file.originalname;
-    const safeCategory = (req.params.category as ContentCategory) ?? "anime";
-    const dir = ensureCategoryCoverDir(
-      ["anime", "movies", "series", "manga", "books"].includes(safeCategory)
-        ? safeCategory
-        : "anime"
-    );
-    const ext = inferExtension(file);
-    const filename = ensureUniqueFilename(dir, baseSource || "cover", ext);
-    cb(null, filename);
+const uploadBook = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: (_req, file, cb) => {
+    if (!normalizeBookExtension(file.originalname, file.mimetype)) {
+      cb(new Error("Unsupported book format"));
+      return;
+    }
+    cb(null, true);
   }
 });
 
-const upload = multer({ storage });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: (_req, file, cb) => {
+    if (!allowedImageMimeTypes.has(file.mimetype)) {
+      cb(new Error("Unsupported cover image format"));
+      return;
+    }
+    cb(null, true);
+  }
+});
 
 // Получить один элемент по id
 router.get("/:category/:id", async (req, res) => {
@@ -166,6 +104,265 @@ router.get("/:category/:id", async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Failed to load content item" });
+  }
+});
+
+router.get("/:category/:id/reader", async (req, res) => {
+  try {
+    const category = getReaderCategory(req.params.category);
+    if (!category) {
+      return res.status(400).json({ error: "Reader is available only for books and manga" });
+    }
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid id" });
+    }
+
+    const db = await getDatabase(category);
+    const book = await db.get("SELECT * FROM content WHERE id = ?", id);
+    if (!book) {
+      return res.status(404).json({ error: "Book not found" });
+    }
+
+    const progress = await db.get(
+      "SELECT * FROM reading_progress WHERE content_id = ?",
+      id
+    );
+    const bookmarks = await db.all(
+      "SELECT * FROM reading_bookmarks WHERE content_id = ? ORDER BY created_at DESC, id DESC",
+      id
+    );
+
+    res.json({ book, progress: progress ?? null, bookmarks });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to load reader data" });
+  }
+});
+
+router.post("/:category/:id/file", uploadBook.single("bookFile"), async (req, res) => {
+  try {
+    const category = getReaderCategory(req.params.category);
+    if (!category) {
+      return res.status(400).json({ error: "File upload is available only for books and manga" });
+    }
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid id" });
+    }
+
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ error: "Book file is required" });
+    }
+
+    const db = await getDatabase(category);
+    const existing = await db.get("SELECT * FROM content WHERE id = ?", id);
+    if (!existing) {
+      return res.status(404).json({ error: "Book not found" });
+    }
+
+    const originalTitle =
+      typeof existing.original_title === "string" && existing.original_title.trim()
+        ? existing.original_title.trim()
+        : typeof existing.title === "string" && existing.title.trim()
+        ? existing.title.trim()
+        : "book";
+
+    const saved = await saveBookFile({
+      originalTitle,
+      originalName: file.originalname,
+      mimetype: file.mimetype,
+      buffer: file.buffer
+    });
+
+    const previousPath = getLocalBookFsPath(existing.book_file_path);
+
+    await db.run(
+      `UPDATE content
+       SET book_file_path = ?, book_file_format = ?, episodes_total = 0, episodes_watched = 0
+       WHERE id = ?`,
+      [saved.publicPath, saved.extension, id]
+    );
+
+    await db.run("DELETE FROM reading_bookmarks WHERE content_id = ?", id);
+    await db.run("DELETE FROM reading_progress WHERE content_id = ?", id);
+
+    await safeDeleteFile(previousPath);
+
+    const updated = await db.get("SELECT * FROM content WHERE id = ?", id);
+    res.status(201).json(updated);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to upload book file" });
+  }
+});
+
+router.put("/:category/:id/progress", async (req, res) => {
+  try {
+    const category = getReaderCategory(req.params.category);
+    if (!category) {
+      return res.status(400).json({ error: "Reader is available only for books and manga" });
+    }
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid id" });
+    }
+
+    const {
+      current_page,
+      total_pages,
+      location,
+      progress_percent,
+      font_size,
+      theme
+    } = req.body as {
+      current_page?: number;
+      total_pages?: number;
+      location?: string | null;
+      progress_percent?: number;
+      font_size?: number;
+      theme?: string;
+    };
+
+    const db = await getDatabase(category);
+    const book = await db.get("SELECT id FROM content WHERE id = ?", id);
+    if (!book) {
+      return res.status(404).json({ error: "Book not found" });
+    }
+
+    const safeCurrentPage = Math.max(1, Number(current_page ?? 1));
+    const safeTotalPages = Math.max(1, Number(total_pages ?? 1));
+    const safeProgress = Math.max(
+      0,
+      Math.min(100, Number(progress_percent ?? 0))
+    );
+    const safeFontSize = Math.max(12, Math.min(36, Number(font_size ?? 18)));
+    const safeTheme = theme === "light" ? "light" : "dark";
+    const safeLocation =
+      typeof location === "string" && location.trim() ? location.trim() : null;
+
+    await db.run(
+      `INSERT INTO reading_progress
+      (content_id, current_page, total_pages, location, progress_percent, font_size, theme, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(content_id) DO UPDATE SET
+        current_page = excluded.current_page,
+        total_pages = excluded.total_pages,
+        location = excluded.location,
+        progress_percent = excluded.progress_percent,
+        font_size = excluded.font_size,
+        theme = excluded.theme,
+        updated_at = excluded.updated_at`,
+      [
+        id,
+        safeCurrentPage,
+        safeTotalPages,
+        safeLocation,
+        safeProgress,
+        safeFontSize,
+        safeTheme,
+        new Date().toISOString()
+      ]
+    );
+
+    await db.run(
+      "UPDATE content SET episodes_total = ?, episodes_watched = ? WHERE id = ?",
+      [safeTotalPages, safeCurrentPage, id]
+    );
+
+    const progress = await db.get(
+      "SELECT * FROM reading_progress WHERE content_id = ?",
+      id
+    );
+    res.json(progress);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to save reading progress" });
+  }
+});
+
+router.get("/:category/:id/bookmarks", async (req, res) => {
+  try {
+    const category = getReaderCategory(req.params.category);
+    if (!category) {
+      return res.status(400).json({ error: "Reader is available only for books and manga" });
+    }
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid id" });
+    }
+    const db = await getDatabase(category);
+    const rows = await db.all(
+      "SELECT * FROM reading_bookmarks WHERE content_id = ? ORDER BY created_at DESC, id DESC",
+      id
+    );
+    res.json(rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to load bookmarks" });
+  }
+});
+
+router.post("/:category/:id/bookmarks", async (req, res) => {
+  try {
+    const category = getReaderCategory(req.params.category);
+    if (!category) {
+      return res.status(400).json({ error: "Reader is available only for books and manga" });
+    }
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid id" });
+    }
+    const { page, location, label } = req.body as {
+      page?: number;
+      location?: string | null;
+      label?: string | null;
+    };
+    const safePage = Math.max(1, Number(page ?? 1));
+    const safeLocation =
+      typeof location === "string" && location.trim() ? location.trim() : null;
+    const safeLabel =
+      typeof label === "string" && label.trim() ? label.trim() : null;
+
+    const db = await getDatabase(category);
+    const result = await db.run(
+      `INSERT INTO reading_bookmarks (content_id, page, location, label, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [id, safePage, safeLocation, safeLabel, new Date().toISOString()]
+    );
+
+    const row = await db.get(
+      "SELECT * FROM reading_bookmarks WHERE id = ?",
+      result.lastID
+    );
+    res.status(201).json(row);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to create bookmark" });
+  }
+});
+
+router.delete("/:category/:id/bookmarks/:bookmarkId", async (req, res) => {
+  try {
+    const category = getReaderCategory(req.params.category);
+    if (!category) {
+      return res.status(400).json({ error: "Reader is available only for books and manga" });
+    }
+    const id = Number(req.params.id);
+    const bookmarkId = Number(req.params.bookmarkId);
+    if (!Number.isFinite(id) || id <= 0 || !Number.isFinite(bookmarkId) || bookmarkId <= 0) {
+      return res.status(400).json({ error: "Invalid ids" });
+    }
+    const db = await getDatabase(category);
+    await db.run(
+      "DELETE FROM reading_bookmarks WHERE id = ? AND content_id = ?",
+      [bookmarkId, id]
+    );
+    res.status(204).send();
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to delete bookmark" });
   }
 });
 
@@ -440,6 +637,8 @@ router.post("/:category", upload.single("cover"), async (req, res) => {
     }
 
     const normalizedTitle = title.trim();
+    const normalizedOriginalTitle =
+      typeof original_title === "string" ? original_title.trim() : "";
 
     const existing = await db.get(
       "SELECT id FROM content WHERE title = ?",
@@ -480,9 +679,21 @@ router.post("/:category", upload.single("cover"), async (req, res) => {
         : 0;
 
     const file = req.file as Express.Multer.File | undefined;
+    if (file && !normalizedOriginalTitle) {
+      return res.status(400).json({
+        error: "Original title is required to upload a cover file"
+      });
+    }
+
     const coverPath =
       file != null
-        ? `/covers/${category}/${file.filename}`
+        ? (
+            await saveCoverAsWebp({
+              category,
+              originalTitle: normalizedOriginalTitle,
+              imageBuffer: file.buffer
+            })
+          ).publicPath
         : cover_path && typeof cover_path === "string" && cover_path.trim()
         ? cover_path.trim()
         : null;
@@ -521,7 +732,7 @@ router.post("/:category", upload.single("cover"), async (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         normalizedTitle,
-        original_title ?? null,
+        normalizedOriginalTitle || null,
         coverPath,
         finalStatus,
         finalRating,
@@ -572,11 +783,34 @@ router.put(
       status?: string;
       view_start_date?: string;
       view_end_date?: string;
+      original_title?: string;
     } & Record<string, unknown>;
 
-    const nextCoverPath =
+    const originalTitleForCover =
+      typeof body.original_title === "string" && body.original_title.trim()
+        ? body.original_title.trim()
+        : typeof existing.original_title === "string" && existing.original_title.trim()
+        ? existing.original_title.trim()
+        : "";
+
+    if (file && !originalTitleForCover) {
+      return res.status(400).json({
+        error: "Original title is required to upload a cover file"
+      });
+    }
+
+    const convertedCover =
       file != null
-        ? `/covers/${category}/${file.filename}`
+        ? await saveCoverAsWebp({
+            category,
+            originalTitle: originalTitleForCover,
+            imageBuffer: file.buffer
+          })
+        : null;
+
+    const nextCoverPath =
+      convertedCover != null
+        ? convertedCover.publicPath
         : typeof body.cover_path === "string" && body.cover_path.trim()
         ? body.cover_path.trim()
         : existing.cover_path;
@@ -586,12 +820,7 @@ router.put(
       const prevFsPath = getLocalCoverFsPath(category, existing.cover_path);
       const nextFsPath = getLocalCoverFsPath(category, nextCoverPath);
       if (prevFsPath && nextFsPath && prevFsPath !== nextFsPath) {
-        try {
-          if (fs.existsSync(prevFsPath)) fs.unlinkSync(prevFsPath);
-        } catch (e) {
-          // Non-fatal: keep request successful even if old file couldn't be deleted
-          console.warn("Failed to delete previous cover file", e);
-        }
+        await safeDeleteFile(prevFsPath);
       }
     }
 
@@ -705,7 +934,11 @@ router.delete("/:category/:id", async (req, res) => {
       return res.status(404).json({ error: "Not found" });
     }
 
+    const localCoverPath = getLocalCoverFsPath(category, existing.cover_path);
+    const localBookPath = getLocalBookFsPath(existing.book_file_path);
     await db.run("DELETE FROM content WHERE id = ?", id);
+    await safeDeleteFile(localCoverPath);
+    await safeDeleteFile(localBookPath);
 
     res.status(204).send();
   } catch (error) {

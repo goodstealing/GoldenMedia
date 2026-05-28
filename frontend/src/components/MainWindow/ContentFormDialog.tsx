@@ -1,6 +1,5 @@
 import type { FormEvent } from "react";
-import type { Category, Status } from "../../domain";
-import { STATUSES } from "../../domain";
+import { getStatusesForCategory, type Category, type Status } from "../../domain";
 import { buildCoverUrl } from "../../utils/api";
 import {
   getEpisodesTotalFormLabel,
@@ -113,6 +112,8 @@ export function ContentFormDialog({
   onOpenDetail,
 }: ContentFormDialogProps) {
   if (!open) return null;
+  const hasOriginalTitle = formOriginalTitle.trim().length > 0;
+  const statuses = getStatusesForCategory(category);
 
   const currentCoverPreviewSrc = (() => {
     let src: string | null = null;
@@ -235,14 +236,16 @@ export function ContentFormDialog({
                   <input
                     type="file"
                     accept="image/*"
-                    disabled={coverMode !== "file"}
+                    disabled={coverMode !== "file" || !hasOriginalTitle}
                     onChange={(e) => {
                       const file = e.target.files?.[0] ?? null;
                       onCoverFileChange(file);
                     }}
                   />
                   <small className="hint">
-                    {formCoverFileName
+                    {!hasOriginalTitle
+                      ? "Сначала заполните поле \"Оригинальное название\""
+                      : formCoverFileName
                       ? formCoverFileName
                       : coverMode === "file" && formCoverPath
                       ? `Текущая обложка: ${formCoverPath}`
@@ -301,7 +304,7 @@ export function ContentFormDialog({
                 onChange={(e) => onFormStatusChange(e.target.value as Status | "")}
               >
                 <option value="">—</option>
-                {STATUSES.map((s) => (
+                {statuses.map((s) => (
                   <option key={s} value={s}>
                     {s}
                   </option>

@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import type { Category, ContentItem, Status } from "../domain";
+import {
+  normalizeStatusForCategory,
+  type Category,
+  type ContentItem,
+  type Status,
+} from "../domain";
 import {
   getYearFormValue,
   usesSeasonYearField,
@@ -164,7 +169,7 @@ export function useContentForm(
     setEditingItem(item);
     setFormTitle(item.title);
     setFormOriginalTitle(item.original_title ?? "");
-    setFormStatus(item.status ?? "");
+    setFormStatus(normalizeStatusForCategory(category, item.status) ?? "");
     setFormRating(item.rating != null ? String(item.rating) : "");
     setFormEpisodesTotal(
       item.episodes_total != null ? String(item.episodes_total) : ""
@@ -261,6 +266,10 @@ export function useContentForm(
     e.preventDefault();
     if (!formTitle.trim()) {
       alert("Название обязательно");
+      return;
+    }
+    if (coverMode === "file" && formCoverFile && !formOriginalTitle.trim()) {
+      alert("Для загрузки обложки сначала заполните оригинальное название");
       return;
     }
 

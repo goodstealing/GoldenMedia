@@ -231,7 +231,16 @@ export function parseUpdateBody(
   };
 
   const assignOptionalString = (
-    field: keyof UpdateContentDto,
+    field:
+      | "original_title"
+      | "status"
+      | "season"
+      | "genres"
+      | "studio"
+      | "release_date"
+      | "duration_text"
+      | "view_start_date"
+      | "view_end_date",
     value: unknown
   ) => {
     if (typeof value === "string") {
