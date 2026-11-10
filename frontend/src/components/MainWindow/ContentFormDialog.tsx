@@ -1,7 +1,15 @@
 import type { FormEvent } from "react";
-import type { Category, Status } from "../../domain";
-import { STATUSES } from "../../domain";
+import { getStatusesForCategory, type Category, type Status } from "../../domain";
 import { buildCoverUrl } from "../../utils/api";
+import {
+  getEpisodesTotalFormLabel,
+  getEpisodesWatchedFormLabel,
+  getStudioColumnLabel,
+  getYearFormLabel,
+  getYearFormPlaceholder,
+  usesSeasonYearField,
+  usesYearOnlyField,
+} from "../../utils/categoryLabels";
 
 type CoverMode = "file" | "url";
 
@@ -14,6 +22,8 @@ type ContentFormDialogProps = {
   onFormTitleChange: (value: string) => void;
   formOriginalTitle: string;
   onFormOriginalTitleChange: (value: string) => void;
+  formDescription: string;
+  onFormDescriptionChange: (value: string) => void;
   formStatus: Status | "";
   onFormStatusChange: (value: Status | "") => void;
   formRating: string;
@@ -51,6 +61,7 @@ type ContentFormDialogProps = {
   formAnimeDurationText: string;
   onFormAnimeDurationTextChange: (value: string) => void;
   onSubmit: (e: FormEvent) => void;
+  onOpenDetail?: () => void;
 };
 
 export function ContentFormDialog({
@@ -62,6 +73,8 @@ export function ContentFormDialog({
   onFormTitleChange,
   formOriginalTitle,
   onFormOriginalTitleChange,
+  formDescription,
+  onFormDescriptionChange,
   formStatus,
   onFormStatusChange,
   formRating,
@@ -96,8 +109,11 @@ export function ContentFormDialog({
   formAnimeDurationText,
   onFormAnimeDurationTextChange,
   onSubmit,
+  onOpenDetail,
 }: ContentFormDialogProps) {
   if (!open) return null;
+  const hasOriginalTitle = formOriginalTitle.trim().length > 0;
+  const statuses = getStatusesForCategory(category);
 
   const currentCoverPreviewSrc = (() => {
     let src: string | null = null;
@@ -133,7 +149,17 @@ export function ContentFormDialog({
         <form className="dialog-form" onSubmit={onSubmit}>
           <div className="dialog-grid">
             <label>
-              <span>Название *</span>
+              {onOpenDetail ? (
+                <button
+                  type="button"
+                  className="form-label-link"
+                  onClick={onOpenDetail}
+                >
+                  Название *
+                </button>
+              ) : (
+                <span>Название *</span>
+              )}
               <input
                 type="text"
                 value={formTitle}
@@ -143,18 +169,43 @@ export function ContentFormDialog({
             </label>
 
             <label>
-              <span>
-                Оригинальное название{" "}
-                {category === "anime"
-                  ? "(японское)"
-                  : category === "movies" || category === "series"
-                  ? "(английское)"
-                  : ""}
-              </span>
+              {onOpenDetail ? (
+                <button
+                  type="button"
+                  className="form-label-link"
+                  onClick={onOpenDetail}
+                >
+                  Оригинальное название{" "}
+                  {category === "anime"
+                    ? "(японское)"
+                    : category === "movies" || category === "series"
+                    ? "(английское)"
+                    : ""}
+                </button>
+              ) : (
+                <span>
+                  Оригинальное название{" "}
+                  {category === "anime"
+                    ? "(японское)"
+                    : category === "movies" || category === "series"
+                    ? "(английское)"
+                    : ""}
+                </span>
+              )}
               <input
                 type="text"
                 value={formOriginalTitle}
                 onChange={(e) => onFormOriginalTitleChange(e.target.value)}
+              />
+            </label>
+
+            <label className="dialog-field-full">
+              <span>Описание</span>
+              <textarea
+                rows={4}
+                value={formDescription}
+                onChange={(e) => onFormDescriptionChange(e.target.value)}
+                placeholder="Краткое описание произведения"
               />
             </label>
 
@@ -185,14 +236,16 @@ export function ContentFormDialog({
                   <input
                     type="file"
                     accept="image/*"
-                    disabled={coverMode !== "file"}
+                    disabled={coverMode !== "file" || !hasOriginalTitle}
                     onChange={(e) => {
                       const file = e.target.files?.[0] ?? null;
                       onCoverFileChange(file);
                     }}
                   />
                   <small className="hint">
-                    {formCoverFileName
+                    {!hasOriginalTitle
+                      ? "Сначала заполните поле \"Оригинальное название\""
+                      : formCoverFileName
                       ? formCoverFileName
                       : coverMode === "file" && formCoverPath
                       ? `Текущая обложка: ${formCoverPath}`
@@ -251,7 +304,7 @@ export function ContentFormDialog({
                 onChange={(e) => onFormStatusChange(e.target.value as Status | "")}
               >
                 <option value="">—</option>
-                {STATUSES.map((s) => (
+                {statuses.map((s) => (
                   <option key={s} value={s}>
                     {s}
                   </option>
@@ -300,7 +353,7 @@ export function ContentFormDialog({
             ) : (
               <>
                 <label>
-                  <span>Всего эпизодов/страниц</span>
+                  <span>{getEpisodesTotalFormLabel(category)}</span>
                   <input
                     type="number"
                     min={0}
@@ -309,7 +362,7 @@ export function ContentFormDialog({
                   />
                 </label>
                 <label>
-                  <span>Просмотрено эпизодов/страниц</span>
+                  <span>{getEpisodesWatchedFormLabel(category)}</span>
                   <input
                     type="number"
                     min={0}
@@ -333,24 +386,26 @@ export function ContentFormDialog({
               </>
             )}
 
-            {category === "movies" ? (
+            {usesSeasonYearField(category) ? (
               <label>
-                <span>Год выхода</span>
+                <span>{getYearFormLabel(category)}</span>
                 <input
                   type="text"
-                  placeholder="ДД.ММ.ГГГГ"
-                  value={formReleaseDate}
-                  onChange={(e) => onFormReleaseDateChange(e.target.value)}
+                  placeholder={getYearFormPlaceholder(category)}
+                  value={formSeason}
+                  onChange={(e) => onFormSeasonChange(e.target.value)}
                 />
               </label>
             ) : (
               <label>
-                <span>Сезон / год</span>
+                <span>{getYearFormLabel(category)}</span>
                 <input
-                  type="text"
-                  placeholder="Лето 2014"
-                  value={formSeason}
-                  onChange={(e) => onFormSeasonChange(e.target.value)}
+                  type={usesYearOnlyField(category) && category !== "movies" ? "number" : "text"}
+                  placeholder={getYearFormPlaceholder(category)}
+                  min={usesYearOnlyField(category) && category !== "movies" ? 1000 : undefined}
+                  max={usesYearOnlyField(category) && category !== "movies" ? 9999 : undefined}
+                  value={formReleaseDate}
+                  onChange={(e) => onFormReleaseDateChange(e.target.value)}
                 />
               </label>
             )}
@@ -365,7 +420,7 @@ export function ContentFormDialog({
             </label>
 
             <label>
-              <span>{category === "movies" ? "Режиссёр" : "Студия"}</span>
+              <span>{getStudioColumnLabel(category)}</span>
               <input
                 type="text"
                 value={formStudio}

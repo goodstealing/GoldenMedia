@@ -11,7 +11,7 @@ type InterfaceSettingsDialogProps = {
   onCoverSizeChange: (size: CoverSize) => void;
   showOriginalTitle: boolean;
   onShowOriginalTitleChange: (value: boolean) => void;
-  importInputRef: React.RefObject<HTMLInputElement>;
+  importInputRef: React.RefObject<HTMLInputElement | null>;
   onShikimoriImport: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onSubmit: (e: FormEvent) => void;
 };
@@ -131,4 +131,5 @@ export function InterfaceSettingsDialog({
     </div>
   );
 }
+
 

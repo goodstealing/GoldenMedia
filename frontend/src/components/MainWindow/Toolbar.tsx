@@ -5,7 +5,7 @@ type ToolbarProps = {
   onCreate: () => void;
 };
 
-export function Toolbar({ category, onCreate }: ToolbarProps) {
+export function Toolbar({ category: _category, onCreate }: ToolbarProps) {
   return (
     <div className="toolbar">
       <button className="primary-btn" onClick={onCreate}>
@@ -14,4 +14,5 @@ export function Toolbar({ category, onCreate }: ToolbarProps) {
     </div>
   );
 }
+
 
