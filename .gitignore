@@ -3,6 +3,8 @@
 **/.pnp
 **/.pnp.js
 
+/backend/src/data/
+
 # Build outputs
 **/dist/
 **/dist-ssr/
