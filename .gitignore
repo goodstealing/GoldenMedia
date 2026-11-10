@@ -3,6 +3,9 @@
 **/.pnp
 **/.pnp.js
 
+# Databases
+/backend/src/data/
+
 # Build outputs
 **/dist/
 **/dist-ssr/
